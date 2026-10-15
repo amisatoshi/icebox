@@ -1,0 +1,21 @@
+[workspace]
+members = ["crates/icebox-core", "src-tauri"]
+default-members = ["crates/icebox-core"]
+resolver = "2"
+
+[workspace.dependencies]
+frostsnap_coordinator = { git = "https://github.com/frostsnap/frostsnap", rev = "233f93b6d4ad16552596fad4f80e7a44b9fe4c60" }
+frostsnap_core = { git = "https://github.com/frostsnap/frostsnap", rev = "233f93b6d4ad16552596fad4f80e7a44b9fe4c60" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+rusqlite = { version = "0.31.0", features = ["bundled"] }
+
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = "s"

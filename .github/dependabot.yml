@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # Rust crates. The Frostsnap crates are pinned to a git commit on purpose and moved by hand
+  # (see README → "Frostsnap version and device firmware"), so Dependabot leaves them alone.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    groups:
+      tauri:
+        patterns: ["tauri*"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps"
+
+  # Keeps the SHA-pinned actions current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: ["dependencies", "ci"]
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"

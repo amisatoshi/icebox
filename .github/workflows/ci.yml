@@ -1,0 +1,99 @@
+# Checks every pull request and every push to main.
+# Actions are pinned to full commit SHAs (Dependabot keeps them current); the comment shows the version.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Read-only by default. No job here needs to write anything.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  rust:
+    name: fmt, clippy, test (Linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: System libraries for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev \
+            libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev
+      - name: Rust toolchain (version from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup toolchain install "$(grep '^channel' rust-toolchain.toml | cut -d'"' -f2)" \
+            --profile minimal --component rustfmt,clippy
+          rustup show
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Formatting
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked
+      - name: Tests
+        run: cargo test --workspace --locked
+
+  windows:
+    name: compile (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain (version from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup toolchain install "$(grep '^channel' rust-toolchain.toml | cut -d'"' -f2)" \
+            --profile minimal --component rustfmt,clippy
+          rustup show
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Check
+        run: cargo check --workspace --all-targets --locked
+
+  ui:
+    name: interface checks
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: JavaScript syntax
+        run: node --check ui/app.js && node --check ui/demo.js
+      - name: No inline scripts or remote resources (the CSP would block them anyway)
+        run: |
+          set -e
+          if grep -nE '<script>|<script [^>]*>[^<]|src="https?:|href="https?:' ui/index.html; then
+            echo "::error::ui/index.html must only load local files with no inline scripts"; exit 1
+          fi
+          if grep -nE "innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function" ui/app.js; then
+            echo "::error::Use textContent/DOM APIs, never HTML strings or eval, in ui/app.js"; exit 1
+          fi
+      - name: Demo preview is in sync with index.html
+        run: |
+          python3 dev/sync-preview.py
+          git diff --exit-code dev/preview.html
+
+  deny:
+    name: dependency policy (cargo-deny)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check advisories bans licenses sources

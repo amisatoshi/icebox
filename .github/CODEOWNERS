@@ -1,0 +1,12 @@
+# Owners are automatically asked to review changes to these paths.
+# Replace @amisatoshi with your GitHub username (or @ORG/team).
+*                                   @amisatoshi
+
+# Security-sensitive: keys, signing, persistence, app permissions, CI/release
+/crates/icebox-core/                @amisatoshi
+/src-tauri/tauri.conf.json          @amisatoshi
+/src-tauri/capabilities/            @amisatoshi
+/.github/                           @amisatoshi
+/deny.toml                          @amisatoshi
+/Cargo.toml                         @amisatoshi
+/Cargo.lock                         @amisatoshi

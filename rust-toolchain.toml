@@ -1,0 +1,4 @@
+[toolchain]
+# Same toolchain the Frostsnap repo pins, so the frostsnap crates build exactly as upstream.
+channel = "1.95.0"
+components = ["rustfmt", "clippy"]

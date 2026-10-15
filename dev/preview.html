@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Icebox (UI preview with fake devices)</title>
+  <link rel="stylesheet" href="../ui/style.css">
+</head>
+<body>
+  <!-- Generated from ui/index.html by dev/sync-preview.py. Runs the UI in a normal browser
+       against the demo backend, with extra devices showing the warning states. -->
+<div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="../ui/icon.png" alt="" class="brand-mark">
+        <div>
+          <div class="brand-name">Icebox</div>
+          <div class="brand-sub">for Frostsnap</div>
+        </div>
+      </div>
+
+      <section class="side-section">
+        <div class="side-heading">
+          <span>Plugged in</span>
+          <span class="count" id="device-count">0</span>
+        </div>
+        <ul class="chain" id="device-chain"></ul>
+        <p class="side-hint" id="device-hint">Connect a Frostsnap device with a USB cable.</p>
+      </section>
+
+      <section class="side-section grow">
+        <div class="side-heading"><span>Wallets</span></div>
+        <ul class="wallet-list" id="wallet-list"></ul>
+        <button class="btn ghost full" id="new-wallet-btn">+ New wallet</button>
+        <button class="link side-link" id="restore-btn">Restore from devices</button>
+      </section>
+
+      <nav class="side-foot">
+        <button class="link" id="devices-btn">Devices</button>
+        <button class="link" id="settings-btn">Settings</button>
+      </nav>
+    </aside>
+
+    <main class="main" id="main"></main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="../ui/demo.js"></script>
+  <script src="mock-tauri.js"></script>
+  <script src="../ui/app.js"></script>
+</body>
+</html>

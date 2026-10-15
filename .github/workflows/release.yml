@@ -1,0 +1,109 @@
+# Builds installers when a version tag (v*) is pushed, or by hand.
+#
+#  1. "build" compiles on Windows and Linux with read-only access, then records GitHub build
+#     provenance for every installer, so anyone can check it came from this workflow and commit:
+#       gh attestation verify <file> --repo amisatoshi/icebox
+#  2. "release" waits for a maintainer to approve the "release" environment, then puts the
+#     installers and SHA256SUMS into a DRAFT GitHub release for a final check before publishing.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+          # 22.04 rather than latest so the Linux packages run on older distributions too
+          - os: ubuntu-22.04
+            name: linux
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write       # to sign the provenance attestation
+      attestations: write   # to store it
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Linux build dependencies
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev \
+            libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Rust toolchain (version from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup toolchain install "$(grep '^channel' rust-toolchain.toml | cut -d'"' -f2)" \
+            --profile minimal --component rustfmt,clippy
+          rustup show
+
+      # No build cache in release builds: every release is compiled from scratch.
+
+      - name: Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Test
+        run: cargo test -p icebox-core --locked
+
+      - name: Build installers
+        run: cargo tauri build -- --locked
+
+      - name: Collect installers
+        shell: bash
+        run: |
+          mkdir dist
+          shopt -s nullglob
+          for f in target/release/bundle/msi/*.msi target/release/bundle/deb/*.deb \
+                   target/release/bundle/rpm/*.rpm target/release/bundle/appimage/*.AppImage; do
+            cp "$f" dist/
+          done
+          ls -la dist
+
+      - name: Record build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: icebox-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    environment: release      # add required reviewers to this environment in Settings
+    permissions:
+      contents: write         # to create the draft release
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum * | tee SHA256SUMS
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          draft: true
+          generate_release_notes: true
+          files: dist/*

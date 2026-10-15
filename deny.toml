@@ -1,0 +1,40 @@
+# cargo-deny policy, checked in CI. Run locally with: cargo install cargo-deny && cargo deny check
+[graph]
+all-features = false
+
+[advisories]
+# Fail on known vulnerabilities and on crates marked unsound. Yanked crates are an error too.
+yanked = "deny"
+ignore = [
+  # { id = "RUSTSEC-0000-0000", reason = "why it doesn't affect Icebox" },
+]
+
+[licenses]
+# Permissive licences compatible with shipping Icebox under MIT OR Apache-2.0.
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "CC0-1.0",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "BSL-1.0",
+  "MPL-2.0",
+  "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+# The only git dependency allowed: the official Frostsnap crates, pinned to a commit.
+allow-git = ["https://github.com/frostsnap/frostsnap"]

@@ -1,0 +1,26 @@
+name: Feature request
+description: An idea to make Icebox better
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation and who it's for (individuals, families, organisations…).
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security or privacy considerations
+      description: Does it change what devices are asked to sign, what's stored, or what's sent over the network?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered

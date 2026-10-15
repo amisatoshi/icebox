@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability (privately)
+    url: https://github.com/amisatoshi/icebox/security/advisories/new
+    about: Anything that could affect funds or privacy. Please don't open a public issue.
+  - name: Ask a question
+    url: https://github.com/amisatoshi/icebox/discussions
+    about: Questions about using or building Icebox.
+  - name: Frostsnap device or firmware problem
+    url: https://github.com/frostsnap/frostsnap/issues
+    about: Problems with the devices themselves belong upstream.

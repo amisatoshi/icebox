@@ -1,0 +1,5 @@
+# Lets the logged-in user talk to Frostsnap devices (Espressif USB serial, 303a:1001)
+# without root. Install with:
+#   sudo cp linux/99-frostsnap.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
+SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", MODE="0660", TAG+="uaccess"

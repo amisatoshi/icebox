@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The bundled Icebox window may listen for wallet events. Nothing else from Tauri's core (file system, shell, HTTP, opener) is available to the page; block-explorer links are built and opened by Icebox itself.",
+  "windows": ["main"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}
