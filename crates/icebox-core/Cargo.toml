@@ -13,6 +13,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 rusqlite = { workspace = true }
-rand = "0.8"
+rand = "0.10"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 base64 = "0.22"
