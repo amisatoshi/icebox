@@ -13,9 +13,6 @@ permissions: read-all
 
 jobs:
   analysis:
-    # Scorecard only rates public repositories (and publishing needs one), so it is skipped
-    # while the repo is private.
-    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-22.04
     permissions:
       security-events: write

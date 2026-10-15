@@ -10,17 +10,13 @@ testers and users ask for. Ideas and votes are welcome in Discussions.
 - **Demo mode**: try everything with simulated devices
 - Menu bar, About page, firmware check, erase device
 - Transaction links to mempool.space from the history page
+- Check a backup on the device; all receive addresses with "used" marks; descriptor QR code
 
 ## Next
 
 - **Watch-only wallets**: add a wallet from its descriptor (paste, file or QR code) to see
   balance and history on a computer that never holds a device. For a treasurer, a family member,
   or your own second computer. Includes exporting a wallet from one Icebox to another as a QR code.
-- **Check a backup**: enter the words you wrote down on the device, which confirms they match its
-  share, without the words ever reaching the computer (the official coordinator crate already has
-  this protocol)
-- **Address list**: every receive address with a "used" mark, to discourage address reuse
-- **Descriptor as a QR code** on the Details tab, for importing into a watch-only wallet
 - **Scan QR codes with the webcam**: pay-to addresses and `bitcoin:` links on the Send page, and
   watch-only descriptors. Decoded in Rust, so no third-party JavaScript; the camera is only on
   while the scan window is open.

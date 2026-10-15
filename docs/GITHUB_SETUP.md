@@ -10,6 +10,7 @@ A checklist for publishing Icebox as a well-run open-source project. Most of it 
 - [ ] **Commit signing.** Create an SSH signing key and tell git and GitHub about it:
       ```bash
       ssh-keygen -t ed25519 -C "icebox signing" -f ~/.ssh/icebox_signing
+      # Windows PowerShell: use $HOME\.ssh\icebox_signing and "$HOME/.ssh/icebox_signing.pub" below
       git config --global gpg.format ssh
       git config --global user.signingkey ~/.ssh/icebox_signing.pub
       git config --global commit.gpgsign true
@@ -17,12 +18,12 @@ A checklist for publishing Icebox as a well-run open-source project. Most of it 
       ```
       Then add `~/.ssh/icebox_signing.pub` at GitHub → Settings → SSH and GPG keys →
       **New SSH key → Key type: Signing key**. Commits will show **Verified**.
-- [ ] **Replace `amisatoshi`** with your GitHub username or organisation in the repo files:
+- [ ] **Replace `OWNER`** with your GitHub username or organisation in the repo files:
       ```bash
-      grep -rl "amisatoshi" --exclude-dir=target --exclude-dir=.git . \
-        | xargs sed -i 's/amisatoshi/your-github-name/g'
+      grep -rl "OWNER" --exclude-dir=target --exclude-dir=.git . \
+        | xargs sed -i 's/OWNER/your-github-name/g'
       ```
-      (On Windows, run that in Git Bash.) It's in `CODEamisatoshiS`, `CHANGELOG.md`, `SECURITY.md`,
+      (On Windows, run that in Git Bash.) It's in `CODEOWNERS`, `CHANGELOG.md`, `SECURITY.md`,
       the issue template links and README badges.
 - [ ] **Commit `Cargo.lock` from a successful local build.** CI builds with `--locked`, so the
       lock file must already include the Tauri crates. Run `cargo tauri build` once, then commit
@@ -30,22 +31,29 @@ A checklist for publishing Icebox as a well-run open-source project. Most of it 
 - [ ] **Use an organisation** (e.g. a `blockchainology` org) rather than a personal account if
       others will maintain it. Ownership, teams and billing are easier to hand over later.
 
-Then create the repository (**public**, no template, no README, since you already have one) and
-push:
+Then create the repository **as private** (no template, README, licence or .gitignore: the folder
+already has them) and push. Starting private lets CI run and get fixed before anyone sees it:
 
 ```bash
 git init -b main
 git add .
-git commit -s -m "Initial public release of Icebox"
-git remote add origin git@github.com:amisatoshi/icebox.git
+git commit -s -m "Initial commit of Icebox"
+git remote add origin git@github.com:OWNER/icebox.git
 git push -u origin main
 ```
 
-## 2. Apply the settings
+Open the **Actions** tab and wait for the first CI run (about 15–20 minutes). Fix anything red
+before going public.
+
+## 2. Going public, then applying the settings
+
+When you're ready: Settings → General → Danger Zone → **Change visibility → Public**. Run the
+script *after* this: several settings (rulesets on a free plan, private vulnerability reporting,
+secret scanning) only work on public repositories.
 
 ```bash
 gh auth login                       # as the repo admin
-scripts/github-setup.sh amisatoshi/icebox
+scripts/github-setup.sh OWNER/icebox
 ```
 
 This sets:
@@ -123,7 +131,7 @@ and release the next patch version (e.g. 0.2.1).
 Users can then verify an installer:
 
 ```bash
-gh attestation verify Icebox_0.2.0_x64_en-US.msi --repo amisatoshi/icebox
+gh attestation verify Icebox_0.2.0_x64_en-US.msi --repo OWNER/icebox
 ```
 
 ## 6. Licence

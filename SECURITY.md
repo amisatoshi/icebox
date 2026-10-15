@@ -63,5 +63,5 @@ Each release lists SHA-256 checksums, and the installers carry GitHub build prov
 an installer was built by this repository's release workflow from a tagged commit:
 
 ```bash
-gh attestation verify Icebox_0.2.0_x64_en-US.msi --repo amisatoshi/icebox
+gh attestation verify Icebox_0.2.0_x64_en-US.msi --repo OWNER/icebox
 ```

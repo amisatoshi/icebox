@@ -21,6 +21,9 @@ pub struct ConnectedDevice {
     pub firmware_name: String,
     /// Finished connecting: it asked for a name or was registered with its name.
     pub ready: bool,
+    /// What the official coordinator needs to know about the firmware (e.g. which backup check
+    /// the device supports). `None` until the device has announced itself.
+    pub firmware: Option<FirmwareVersion>,
 }
 
 /// How a device's firmware compares with the firmware this build of Icebox was made for.
@@ -92,8 +95,10 @@ impl DeviceList {
                         firmware_version: None,
                         firmware_name: String::new(),
                         ready: false,
+                        firmware: None,
                     });
                 let firmware = FirmwareVersion::new(*firmware_digest);
+                device.firmware = Some(firmware);
                 device.firmware_digest = firmware_digest.to_string();
                 device.firmware_version = firmware.version;
                 device.firmware_name = firmware.version_name();

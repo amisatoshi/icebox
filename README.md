@@ -1,7 +1,7 @@
 # Icebox
 
-[![CI](https://github.com/amisatoshi/icebox/actions/workflows/ci.yml/badge.svg)](https://github.com/amisatoshi/icebox/actions/workflows/ci.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/amisatoshi/icebox/badge)](https://scorecard.dev/viewer/?uri=github.com/amisatoshi/icebox)
+[![CI](https://github.com/OWNER/icebox/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/icebox/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/OWNER/icebox/badge)](https://scorecard.dev/viewer/?uri=github.com/OWNER/icebox)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
 A self-built desktop wallet for [Frostsnap](https://frostsnap.com) devices, for Windows and Linux.
@@ -86,6 +86,8 @@ from source yourself, so you know exactly what is running.
   `frostsnap_core` restoration code.
 - Wallets are labelled "2 to sign" rather than "2-of-3": a wallet restored from some of its devices
   can't know how many devices exist in total.
+- **Check a backup**: enter your written-down words on the device; it says whether they match
+- All receive addresses, with "used" marks to discourage reuse; descriptor as a QR code
 - About box (version, Frostsnap commit, expected firmware, data folder)
 - Transactions in History open on mempool.space in your browser
 - Only one copy of Icebox runs at a time, and it remembers its window size and position

@@ -9,11 +9,6 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     labels: ["dependencies"]
-    ignore:
-      # Must stay on the version frostsnap_core uses: its key generation takes rand 0.8's RNG.
-      - dependency-name: "rand"
-      # Bundles SQLite, and only one copy can be linked: must match frostsnap_coordinator's.
-      - dependency-name: "rusqlite"
     groups:
       tauri:
         patterns: ["tauri*"]

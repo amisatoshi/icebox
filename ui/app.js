@@ -32,6 +32,7 @@ const state = {
   keygen: null,         // last keygen progress
   verify: null,         // last verify-address progress
   backup: null,         // last display-backup progress
+  checkBackup: null,    // { keyId, device_id, done, valid } while checking a backup on a device
   signing: {},          // session id -> last signing progress
   wizard: null,
   wallet: null,         // per-wallet page state
@@ -150,6 +151,11 @@ function render() {
   }
   // Leaving the Receive tab clears an address check, so devices go back to their home screen.
   if (state.verify && !(state.view.name === "wallet" && state.wallet && state.wallet.tab === "receive")) stopVerify();
+  // Leaving the Backups tab ends a backup check, so the device goes back to its home screen.
+  if (state.checkBackup && !state.checkBackup.done && !(state.view.name === "wallet" && state.wallet && state.wallet.tab === "backups")) {
+    state.checkBackup = null;
+    call("cancel_protocol");
+  }
   // Re-rendering replaces the DOM, so remember which input had focus and put it back.
   const active = document.activeElement;
   const focusId = active && active.id;
@@ -800,11 +806,21 @@ function renderBackupList(key) {
       const status = d.backup_done === true ? h("span", { class: "pill ok", text: "backed up" })
         : d.backup_done === false ? h("span", { class: "pill warn", text: "not backed up" })
         : h("span", { class: "pill", text: "unknown on this computer" });
+      const c = state.checkBackup;
+      const checking = c && c.device_id === d.id && c.keyId === key.key_id && !c.done && isConnected(d.id);
+      const check = h("button", {
+        class: "btn small ghost",
+        title: "Type the words you wrote down on the device. It tells you if they match. The words never reach this computer.",
+        onclick: () => { state.checkBackup = { keyId: key.key_id, device_id: d.id, done: false }; call("check_backup", { keyId: key.key_id, deviceId: d.id }).then((r) => { if (r === undefined) { state.checkBackup = null; render(); } }); render(); },
+      }, "Check backup");
       let action;
       if (showing) action = h("span", { class: "pill warn", text: "showing on device — confirm there when written down" });
+      else if (checking) action = h("div", { class: "row" },
+        h("span", { class: "pill warn", text: "enter your words on the device" }),
+        h("button", { class: "btn small ghost", onclick: () => { call("cancel_protocol"); state.checkBackup = null; render(); } }, "Cancel"));
       else if (!isConnected(d.id)) action = d.backup_done === true ? status : h("div", { class: "row" }, status, h("span", { class: "pill", text: "plug in to show" }));
-      else if (d.backup_done === true) action = h("div", { class: "row" }, status, show("Show again", "btn small ghost"));
-      else action = h("div", { class: "row" }, status, show("Show backup on device", "btn small"));
+      else if (d.backup_done === true) action = h("div", { class: "row" }, status, check, show("Show again", "btn small ghost"));
+      else action = h("div", { class: "row" }, status, show("Show backup on device", "btn small"), check);
       return h("div", { class: "item" },
         h("div", { class: "stack" },
           h("strong", { text: d.name || deviceName(d.id) }),
@@ -947,8 +963,34 @@ function txLink(network, txid) {
   }, label + " ↗");
 }
 
+// Records that an address was handed out, so "Get another" gives a fresh one (as in the official
+// app). Called on Copy, Check on a device, and Get another.
+function markShared(key, w, a) {
+  if (!a) return;
+  call("mark_address_shared", { keyId: key.key_id, index: a.index }).then(() => loadAddresses(w, key, true));
+}
+
+async function loadAddresses(w, key, force) {
+  if (!w.addressesOpen || (w.addresses && !force)) return;
+  const list = await call("addresses", { keyId: key.key_id });
+  if (list) { w.addresses = list; render(); }
+}
+
+async function showAddress(key, w, index) {
+  const a = await call("address", { keyId: key.key_id, index });
+  if (a) { w.address = a; stopVerify(); render(); }
+}
+
+async function nextAddress(key, w) {
+  if (w.address) markShared(key, w, w.address); // the current one counts as handed out
+  const addr = await call("next_address", { keyId: key.key_id });
+  if (addr) { w.address = addr; stopVerify(); render(); }
+}
+
 function renderReceive(key, w) {
+  const wrap = h("div", { class: "stack" });
   const card = h("div", { class: "card" });
+  wrap.append(card, renderAddressList(key, w));
   const a = w.address;
   if (!a) {
     card.append(
@@ -958,25 +1000,31 @@ function renderReceive(key, w) {
         onclick: async () => { const addr = await call("next_address", { keyId: key.key_id }); if (addr) { w.address = addr; stopVerify(); render(); } },
       }, "Get a receive address")),
     );
-    return card;
+    return wrap;
   }
   const v = state.verify;
   if (state.demo) {
     card.append(h("div", { class: "notice warn", text: "Demo mode: this address and QR code are placeholders. They can't receive anything, so never send coins to them." }));
   }
+  if (a.used) {
+    card.append(h("div", { class: "notice warn" },
+      "This address has already received coins. Reusing it links your payments together for anyone watching the blockchain. ",
+      h("button", { class: "link", onclick: () => nextAddress(key, w) }, "Use a fresh address"),
+    ));
+  }
   card.append(
     h("div", { class: "row between" },
       h("h2", { text: `Address #${a.index}` }),
-      h("button", { class: "link", onclick: async () => { const addr = await call("next_address", { keyId: key.key_id }); if (addr) { w.address = addr; stopVerify(); render(); } } }, "Get another"),
+      h("button", { class: "link", onclick: () => nextAddress(key, w) }, "Get another"),
     ),
     h("div", { class: "grid2" },
       h("div", { class: "stack" },
         addressChunks(a.address),
         h("div", { class: "row" },
-          h("button", { class: "btn", onclick: () => navigator.clipboard.writeText(a.address).then(() => toast("Copied")) }, "Copy"),
+          h("button", { class: "btn", onclick: () => navigator.clipboard.writeText(a.address).then(() => { toast("Copied"); markShared(key, w, a); }) }, "Copy"),
           h("button", {
             class: "btn primary",
-            onclick: () => { state.verify = { target_devices: [], connected_devices: [], started: true }; call("verify_address", { keyId: key.key_id, index: a.index }); render(); },
+            onclick: () => { state.verify = { target_devices: [], connected_devices: [], started: true }; call("verify_address", { keyId: key.key_id, index: a.index }); markShared(key, w, a); render(); },
           }, "Check on a device"),
         ),
         v ? h("div", { class: "notice" },
@@ -989,6 +1037,34 @@ function renderReceive(key, w) {
       h("img", { class: "qr", src: a.qr_svg, alt: "QR code of the address" }),
     ),
   );
+  return wrap;
+}
+
+// Every address handed out so far, newest first, marked "used" once it has received coins.
+function renderAddressList(key, w) {
+  const card = h("div", { class: "card" });
+  const head = h("div", { class: "row between" },
+    h("h3", { text: "All receive addresses" }),
+    h("button", {
+      class: "link",
+      onclick: () => { w.addressesOpen = !w.addressesOpen; render(); loadAddresses(w, key, true); },
+    }, w.addressesOpen ? "Hide" : "Show"),
+  );
+  card.append(head);
+  if (!w.addressesOpen) return card;
+  if (!w.addresses) { card.append(h("p", { class: "muted", text: "Loading…" })); return card; }
+  card.append(h("div", { class: "list" },
+    ...w.addresses.map((x) => h("button", {
+      class: "item addr-row" + (w.address && w.address.index === x.index ? " current" : ""),
+      onclick: () => showAddress(key, w, x.index),
+    },
+      h("span", { class: "muted mono", text: `#${x.index}` }),
+      h("span", { class: "mono small addr-short" + (x.used ? " struck" : ""), text: x.address.slice(0, 14) + "…" + x.address.slice(-8) }),
+      x.used ? h("span", { class: "pill bad", text: "used" })
+        : x.shared ? h("span", { class: "pill", text: "handed out" })
+        : h("span", { class: "pill ok", text: "fresh" }),
+    )),
+  ));
   return card;
 }
 
@@ -1218,8 +1294,8 @@ async function doBroadcast(w, sessionId) {
 async function loadDescriptor() {
   const w = state.wallet;
   if (!w || w.descriptor) return;
-  const d = await call("descriptor", { keyId: w.keyId });
-  if (d) { w.descriptor = d; render(); }
+  const [d, qr] = await Promise.all([call("descriptor", { keyId: w.keyId }), call("descriptor_qr", { keyId: w.keyId })]);
+  if (d) { w.descriptor = d; w.descriptorQr = qr || null; render(); }
 }
 
 function renderDetails(key, w) {
@@ -1231,8 +1307,13 @@ function renderDetails(key, w) {
     ),
     h("h3", { text: "Watch-only descriptor" }),
     h("p", { class: "muted small", text: "Lets another wallet (Sparrow, Bitcoin Core) watch your balance. It can't spend, but it reveals all your addresses, so keep it private." }),
-    w.descriptor ? h("div", { class: "address-box small", text: w.descriptor }) : h("p", { class: "muted", text: "Loading…" }),
-    w.descriptor ? h("div", { class: "row" }, h("button", { class: "btn", onclick: () => navigator.clipboard.writeText(w.descriptor).then(() => toast("Copied")) }, "Copy descriptor")) : null,
+    w.descriptor ? h("div", { class: "grid2" },
+      h("div", { class: "stack" },
+        h("div", { class: "address-box small", text: w.descriptor }),
+        h("div", { class: "row" }, h("button", { class: "btn", onclick: () => navigator.clipboard.writeText(w.descriptor).then(() => toast("Copied")) }, "Copy descriptor")),
+      ),
+      w.descriptorQr ? h("img", { class: "qr", src: w.descriptorQr, alt: "QR code of the watch-only descriptor" }) : null,
+    ) : h("p", { class: "muted", text: "Loading…" }),
     renderRemoveWallet(key, w),
   );
 }
@@ -1368,6 +1449,20 @@ function onEvent(e) {
       if (e.confirmed) {
         const keyId = (state.wizard && state.wizard.step === "backup" && state.wizard.keyId) || (state.wallet && state.wallet.keyId);
         if (keyId) call("mark_backup_complete", { keyId, deviceId: e.device_id }).then(() => toast("Backup recorded"));
+      }
+      break;
+    }
+    case "check_backup": {
+      const c = state.checkBackup;
+      if (!c || c.device_id !== e.device_id) return;
+      c.done = true;
+      c.valid = e.valid;
+      if (e.valid) {
+        // a backup that checks out is certainly written down
+        call("mark_backup_complete", { keyId: c.keyId, deviceId: e.device_id });
+        toast(`${deviceName(e.device_id)}: backup words match`);
+      } else {
+        toast(`${deviceName(e.device_id)}: those words don't match this device's backup`, true);
       }
       break;
     }

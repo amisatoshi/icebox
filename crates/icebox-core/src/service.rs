@@ -23,6 +23,7 @@ use frostsnap_coordinator::bitcoin::chain_sync::{
 use frostsnap_coordinator::bitcoin::send::SendPlan;
 use frostsnap_coordinator::bitcoin::tofu::trusted_certs::TrustedCertificates;
 use frostsnap_coordinator::bitcoin::wallet::CoordSuperWallet;
+use frostsnap_coordinator::check_backup::{CheckBackupProtocol, CheckBackupState};
 use frostsnap_coordinator::display_backup::{DisplayBackupProtocol, DisplayBackupState};
 use frostsnap_coordinator::erase_device::{EraseDevice, EraseDeviceState};
 use frostsnap_coordinator::frostsnap_comms::{
@@ -766,6 +767,48 @@ impl Service {
         Ok(())
     }
 
+    /// Asks a device to check the user's written-down backup: the user enters the words on the
+    /// device itself, which compares them with its share. The words never reach the computer.
+    /// Emits `CheckBackup` when the device answers; the UI then calls
+    /// [`Self::mark_backup_complete`] if it matched.
+    pub fn check_backup(&self, key_id: &str, device_id: &str) -> Result<()> {
+        let key = self.frost_key(parse_key(key_id)?)?;
+        let device_id = parse_device(device_id)?;
+        let access_structure = key.master_access_structure();
+        let share_index = access_structure
+            .device_to_share_indicies()
+            .get(&device_id)
+            .copied()
+            .ok_or(anyhow!("that device holds no share of this wallet"))?;
+        let firmware = self
+            .0
+            .device_list
+            .lock()
+            .unwrap()
+            .get(device_id)
+            .filter(|d| d.ready)
+            .and_then(|d| d.firmware)
+            .ok_or(anyhow!("plug the device in first"))?;
+        let events = self.0.events.clone();
+        let device_str = device_id.to_string();
+        let protocol = CheckBackupProtocol::new(
+            self.0.coordinator.lock().unwrap().MUTATE_NO_PERSIST(),
+            device_id,
+            access_structure.access_structure_ref(),
+            share_index,
+            DESKTOP_ENCRYPTION_KEY,
+            firmware,
+            FnSink(move |state: CheckBackupState| {
+                events(Event::CheckBackup(CheckBackupView {
+                    device_id: device_str.clone(),
+                    valid: state.backup_manually_entered_valid.unwrap_or(true),
+                }))
+            }),
+        )?;
+        self.start_protocol(protocol);
+        Ok(())
+    }
+
     pub fn mark_backup_complete(&self, key_id: &str, device_id: &str) -> Result<()> {
         let key = self.frost_key(parse_key(key_id)?)?;
         let device_id = parse_device(device_id)?;
@@ -856,6 +899,13 @@ impl Service {
             )
             .to_string(),
         )
+    }
+
+    /// The descriptor as a QR code, for scanning into a watch-only wallet (Sparrow, the
+    /// official app, another Icebox). Low error correction keeps the code small enough to scan
+    /// easily from a screen.
+    pub fn descriptor_qr(&self, key_id: &str) -> Result<String> {
+        qr_svg(&self.descriptor(key_id)?, qrcode::EcLevel::L)
     }
 
     // =====================================================================================
@@ -1187,6 +1237,50 @@ impl Service {
             .lock()
             .unwrap()
             .next_address(key.complete_key.master_appkey);
+        address_view(info.index, &info.address, info.used)
+    }
+
+    /// Records that receive address `index` was handed out (copied, shown, or checked on a
+    /// device), as the official app does, so the next `next_address` is a fresh one.
+    pub fn mark_address_shared(&self, key_id: &str, index: u32) -> Result<()> {
+        let key = self.frost_key(parse_key(key_id)?)?;
+        let (_, wallet) = self.wallet_for(&key)?;
+        wallet
+            .lock()
+            .unwrap()
+            .mark_address_shared(key.complete_key.master_appkey, index)?;
+        Ok(())
+    }
+
+    /// Every receive address handed out so far plus the next one, newest first, with whether
+    /// each has received coins (to discourage reuse).
+    pub fn addresses(&self, key_id: &str) -> Result<Vec<AddressListItem>> {
+        let key = self.frost_key(parse_key(key_id)?)?;
+        let (_, wallet) = self.wallet_for(&key)?;
+        let list = wallet
+            .lock()
+            .unwrap()
+            .list_addresses(key.complete_key.master_appkey);
+        Ok(list
+            .into_iter()
+            .map(|a| AddressListItem {
+                index: a.index,
+                address: a.address.to_string(),
+                used: a.used,
+                shared: a.revealed,
+            })
+            .collect())
+    }
+
+    /// One receive address, with its QR code, to show again.
+    pub fn address(&self, key_id: &str, index: u32) -> Result<AddressView> {
+        let key = self.frost_key(parse_key(key_id)?)?;
+        let (_, wallet) = self.wallet_for(&key)?;
+        let info = wallet
+            .lock()
+            .unwrap()
+            .address(key.complete_key.master_appkey, index)
+            .ok_or_else(|| anyhow!("address index {index} is out of range"))?;
         address_view(info.index, &info.address, info.used)
     }
 
@@ -1660,22 +1754,29 @@ fn check_not_dust(address: &Address, value: u64) -> Result<()> {
     Ok(())
 }
 
-fn address_view(index: u32, address: &Address, used: bool) -> Result<AddressView> {
-    let text = address.to_string();
-    // A BIP21 "bitcoin:" link, so phone cameras offer to open a wallet app instead of showing
-    // bare text. All upper case lets the QR use its compact alphanumeric mode; wallets accept it.
-    let qr_text = format!("BITCOIN:{}", text.to_uppercase());
-    let code = qrcode::QrCode::with_error_correction_level(qr_text.as_bytes(), qrcode::EcLevel::M)
+/// A QR code of `text` as an SVG data URI (the page's CSP allows `data:` images).
+fn qr_svg(text: &str, ec_level: qrcode::EcLevel) -> Result<String> {
+    let code = qrcode::QrCode::with_error_correction_level(text.as_bytes(), ec_level)
         .map_err(|e| anyhow!("can't make QR code: {e}"))?;
     let svg = code
         .render::<qrcode::render::svg::Color<'_>>()
         .min_dimensions(220, 220)
         .quiet_zone(true)
         .build();
-    let qr_svg = format!(
+    Ok(format!(
         "data:image/svg+xml;base64,{}",
         base64::Engine::encode(&base64::engine::general_purpose::STANDARD, svg)
-    );
+    ))
+}
+
+fn address_view(index: u32, address: &Address, used: bool) -> Result<AddressView> {
+    let text = address.to_string();
+    // A BIP21 "bitcoin:" link, so phone cameras offer to open a wallet app instead of showing
+    // bare text. All upper case lets the QR use its compact alphanumeric mode; wallets accept it.
+    let qr_svg = qr_svg(
+        &format!("BITCOIN:{}", text.to_uppercase()),
+        qrcode::EcLevel::M,
+    )?;
     Ok(AddressView {
         index,
         address: text,
@@ -1754,6 +1855,13 @@ fn session_view(
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn descriptor_sized_text_makes_a_qr_code() {
+        let descriptor = format!("tr([39532015/0/0]tpub{}/<0;1>/*)#7jyky7mh", "x".repeat(107));
+        let svg = qr_svg(&descriptor, qrcode::EcLevel::L).unwrap();
+        assert!(svg.starts_with("data:image/svg+xml;base64,"));
+    }
 
     #[test]
     fn dust_payments_are_refused() {

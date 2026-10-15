@@ -198,3 +198,10 @@ td.num { font-family: var(--mono); text-align: right; white-space: nowrap; }
 .danger-zone { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line, rgba(255,255,255,0.08)); }
 .danger-zone h3 { color: var(--bad); }
 .btn.danger:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* receive address list */
+.addr-row { width: 100%; background: none; border: none; border-bottom: 1px solid var(--line); color: inherit; font: inherit; text-align: left; cursor: pointer; gap: 12px; }
+.addr-row:hover { background: color-mix(in srgb, var(--ice) 6%, transparent); }
+.addr-row.current { background: color-mix(in srgb, var(--ice) 12%, transparent); }
+.addr-row .addr-short { flex: 1; }
+.struck { text-decoration: line-through; opacity: 0.7; }

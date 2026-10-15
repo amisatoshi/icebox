@@ -21,6 +21,8 @@ pub enum Event {
     VerifyAddress(VerifyAddressView),
     /// Progress of showing a backup on one device.
     DisplayBackup(DisplayBackupView),
+    /// Result of checking a device's written-down backup on the device.
+    CheckBackup(CheckBackupView),
     /// Progress of erasing a device.
     Erase(EraseView),
     /// A device answered the restore scan (or one was plugged in or out). The UI fetches the
@@ -115,6 +117,24 @@ pub struct DisplayBackupView {
     pub device_id: String,
     pub confirmed: bool,
     pub closed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AddressListItem {
+    pub index: u32,
+    pub address: String,
+    /// Has received coins. Reusing it links payments together.
+    pub used: bool,
+    /// Was handed out (copied, shown or checked on a device).
+    pub shared: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CheckBackupView {
+    pub device_id: String,
+    /// The device confirmed the words entered on it match its share. (Current firmware only
+    /// reports success; a mismatch is shown, and retried, on the device itself.)
+    pub valid: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

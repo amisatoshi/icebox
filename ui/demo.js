@@ -197,6 +197,14 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
     },
 
     display_backup: ({ deviceId }) => later(1200, () => send({ kind: "display_backup", device_id: deviceId, confirmed: true, closed: true })),
+    check_backup: ({ deviceId }) => later(1500, () => send({ kind: "check_backup", device_id: deviceId, valid: true })),
+    mark_address_shared: ({ keyId, index }) => { const w = wallets[keyId]; w.shared = Math.max(w.shared || 0, index + 1); return null; },
+    addresses: ({ keyId }) => {
+      const k = findKey(keyId); const w = wallets[keyId]; const n = Math.max(w.nextIndex, w.shared || 0);
+      return Array.from({ length: n + 1 }, (_, i) => ({ index: i, address: address(k.network, i + 1), used: i < 2 && w.txs.length > 0, shared: i < (w.shared || 0) })).reverse();
+    },
+    address: ({ keyId, index }) => { const k = findKey(keyId); const a = address(k.network, index + 1); return { index, address: a, used: index < 2 && wallets[keyId].txs.length > 0, qr_svg: qr(a) }; },
+    descriptor_qr: () => qr("demo descriptor"),
     mark_backup_complete: ({ keyId, deviceId }) => { const k = findKey(keyId); k.devices.find((d) => d.id === deviceId).backup_done = true; emitKeys(); },
     descriptor: ({ keyId }) => `tr([${hex(8)}/86'/1'/0']tpubDemo${hex(70)}/<0;1>/*)#${hex(8)}  (demo)`,
 

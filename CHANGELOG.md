@@ -7,6 +7,13 @@ All notable changes to Icebox are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Check a backup** (Backups tab): type the words you wrote down on the device itself, and it
+  confirms they match its share. The words never reach the computer. A match marks the device as
+  backed up. Uses the official coordinator's check-backup protocol.
+- **All receive addresses** (Receive tab): every address handed out, newest first, marked
+  "used" once it has received coins, "handed out", or "fresh". Opening a used address warns
+  against reusing it.
+- **Descriptor QR code** on the Details tab, for scanning into a watch-only wallet.
 - Restore from devices: scan every plugged-in device, group shares by wallet, restore in one step.
 - Demo mode with simulated devices and test coins (Help → Try demo mode).
 - Menu bar with keyboard shortcuts; About page.
@@ -21,6 +28,9 @@ All notable changes to Icebox are recorded here. The format follows
 - Transactions in History link to mempool.space (opens your browser; Icebox builds the link itself).
 
 ### Fixed
+- "Get another" returned the same address until it received coins. Addresses are now marked as
+  handed out when copied, checked on a device, or replaced, as the official app does, so each
+  "Get another" is fresh.
 - Restored wallets showed every device as "backed up". Backup status is kept by the app that made
   the wallet, not on the devices, so it's now "unknown on this computer", with a notice and a
   "Show backup on device" button for each device. Backed-up devices can show their words again.
@@ -51,5 +61,5 @@ All notable changes to Icebox are recorded here. The format follows
   history over Electrum, receive with on-device address check, send with per-device signing and
   broadcast, watch-only descriptor, Electrum server settings.
 
-[Unreleased]: https://github.com/amisatoshi/icebox/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/amisatoshi/icebox/releases/tag/v0.1.0
+[Unreleased]: https://github.com/OWNER/icebox/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/OWNER/icebox/releases/tag/v0.1.0

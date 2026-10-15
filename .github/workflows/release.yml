@@ -2,7 +2,7 @@
 #
 #  1. "build" compiles on Windows and Linux with read-only access, then records GitHub build
 #     provenance for every installer, so anyone can check it came from this workflow and commit:
-#       gh attestation verify <file> --repo amisatoshi/icebox
+#       gh attestation verify <file> --repo OWNER/icebox
 #  2. "release" waits for a maintainer to approve the "release" environment, then puts the
 #     installers and SHA256SUMS into a DRAFT GitHub release for a final check before publishing.
 name: release

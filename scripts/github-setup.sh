@@ -2,13 +2,13 @@
 # Applies Icebox's recommended GitHub settings to a repository with the GitHub CLI.
 #
 #   gh auth login                      # as a repository admin
-#   scripts/github-setup.sh amisatoshi/icebox
+#   scripts/github-setup.sh OWNER/icebox
 #
 # Safe to re-run: settings are set, not toggled; rulesets with the same name are replaced.
 # See docs/GITHUB_SETUP.md for what each setting does and the few that must be done by hand.
 set -euo pipefail
 
-REPO="${1:?usage: scripts/github-setup.sh amisatoshi/REPO}"
+REPO="${1:?usage: scripts/github-setup.sh OWNER/REPO}"
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 api() { gh api -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$@"; }
 

@@ -123,6 +123,30 @@ fn start_keygen(
 }
 
 #[tauri::command(async)]
+fn check_backup(state: State<'_, AppState>, key_id: String, device_id: String) -> CmdResult<()> {
+    service(&state)?
+        .check_backup(&key_id, &device_id)
+        .map_err(err)
+}
+
+#[tauri::command(async)]
+fn mark_address_shared(state: State<'_, AppState>, key_id: String, index: u32) -> CmdResult<()> {
+    service(&state)?
+        .mark_address_shared(&key_id, index)
+        .map_err(err)
+}
+
+#[tauri::command(async)]
+fn addresses(state: State<'_, AppState>, key_id: String) -> CmdResult<Vec<AddressListItem>> {
+    service(&state)?.addresses(&key_id).map_err(err)
+}
+
+#[tauri::command(async)]
+fn address(state: State<'_, AppState>, key_id: String, index: u32) -> CmdResult<AddressView> {
+    service(&state)?.address(&key_id, index).map_err(err)
+}
+
+#[tauri::command(async)]
 fn delete_wallet(state: State<'_, AppState>, key_id: String) -> CmdResult<()> {
     service(&state)?.delete_wallet(&key_id).map_err(err)
 }
@@ -153,6 +177,11 @@ fn mark_backup_complete(
 #[tauri::command(async)]
 fn descriptor(state: State<'_, AppState>, key_id: String) -> CmdResult<String> {
     service(&state)?.descriptor(&key_id).map_err(err)
+}
+
+#[tauri::command(async)]
+fn descriptor_qr(state: State<'_, AppState>, key_id: String) -> CmdResult<String> {
+    service(&state)?.descriptor_qr(&key_id).map_err(err)
 }
 
 // ---------- restore ----------
@@ -393,6 +422,11 @@ fn main() {
             start_keygen,
             finalize_keygen,
             delete_wallet,
+            check_backup,
+            mark_address_shared,
+            addresses,
+            address,
+            descriptor_qr,
             display_backup,
             mark_backup_complete,
             descriptor,
