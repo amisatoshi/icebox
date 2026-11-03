@@ -1,7 +1,7 @@
 # Icebox
 
-[![CI](https://github.com/OWNER/icebox/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/icebox/actions/workflows/ci.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/OWNER/icebox/badge)](https://scorecard.dev/viewer/?uri=github.com/OWNER/icebox)
+[![CI](https://github.com/amisatoshi/icebox/actions/workflows/ci.yml/badge.svg)](https://github.com/amisatoshi/icebox/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/amisatoshi/icebox/badge)](https://scorecard.dev/viewer/?uri=github.com/amisatoshi/icebox)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
 A self-built desktop wallet for [Frostsnap](https://frostsnap.com) devices, for Windows, macOS and Linux.
@@ -69,7 +69,7 @@ from source yourself, so you know exactly what is running.
 - Export the watch-only descriptor (for Sparrow, Bitcoin Core, etc.)
 - Set Electrum servers per network
 
-**New in 0.2 (unreleased):**
+**New in 0.2:**
 
 - Menu bar: File (Settings, Quit), Wallet (New wallet, Receive, Send), View (Devices), Help
   (Try demo mode, About), with keyboard shortcuts
@@ -156,11 +156,11 @@ Mac app on a Mac, Linux packages on Linux. Output goes to `target/release/bundle
 
 | System  | File | Notes |
 |---------|------|-------|
-| Windows | `msi/Icebox_0.1.0_x64_en-US.msi` | the one file to send; installs to Start menu with an uninstaller |
-| Linux   | `deb/Icebox_0.1.0_amd64.deb` | Debian/Ubuntu; also installs the udev rule for the devices |
-| Linux   | `rpm/Icebox-0.1.0-1.x86_64.rpm` | Fedora etc.; also installs the udev rule |
-| Linux   | `appimage/Icebox_0.1.0_amd64.AppImage` | any distro; install `linux/99-frostsnap.rules` by hand |
-| macOS   | `dmg/Icebox_0.1.0_aarch64.dmg` | open it and drag Icebox to Applications |
+| Windows | `msi/Icebox_0.2.0_x64_en-US.msi` | the one file to send; installs to Start menu with an uninstaller |
+| Linux   | `deb/Icebox_0.2.0_amd64.deb` | Debian/Ubuntu; also installs the udev rule for the devices |
+| Linux   | `rpm/Icebox-0.2.0-1.x86_64.rpm` | Fedora etc.; also installs the udev rule |
+| Linux   | `appimage/Icebox_0.2.0_amd64.AppImage` | any distro; install `linux/99-frostsnap.rules` by hand |
+| macOS   | `dmg/Icebox_0.2.0_aarch64.dmg` | open it and drag Icebox to Applications |
 
 For one Mac app that runs on both Apple Silicon and Intel, build with
 `rustup target add aarch64-apple-darwin x86_64-apple-darwin` and
