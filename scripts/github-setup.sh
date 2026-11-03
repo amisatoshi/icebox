@@ -14,7 +14,7 @@ api() { gh api -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version
 
 say "Repository basics"
 gh repo edit "$REPO" \
-  --description "Icebox: a self-built desktop wallet for Frostsnap devices (Windows & Linux)" \
+  --description "Icebox: a self-built desktop wallet for Frostsnap devices (Linux, Windows, macOS)" \
   --add-topic bitcoin --add-topic frost --add-topic frostsnap --add-topic multisig \
   --add-topic self-custody --add-topic hardware-wallet --add-topic tauri --add-topic rust \
   --enable-issues --enable-discussions \
@@ -91,12 +91,14 @@ api -X POST "repos/$REPO/rulesets" --input - >/dev/null <<'JSON'
       "required_status_checks": [
         {"context": "fmt, clippy, test (Linux)"},
         {"context": "compile (Windows)"},
+        {"context": "compile (macOS)"},
         {"context": "interface checks"},
-        {"context": "dependency policy (cargo-deny)"}]}}
+        {"context": "dependency policy (cargo-deny)"},
+        {"context": "DCO"}]}}
   ]
 }
 JSON
-echo "main: PRs only, CI must pass, signed commits, linear history, no force-push or deletion"
+echo "main: PRs only, CI and DCO sign-off must pass, signed commits, linear history, no force-push or deletion"
 
 delete_ruleset "Protect release tags"
 api -X POST "repos/$REPO/rulesets" --input - >/dev/null <<'JSON'

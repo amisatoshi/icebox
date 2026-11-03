@@ -86,9 +86,9 @@ Owners" (Settings → Rules → Rulesets → Protect main).
       **Require approval for all external contributors**.
 - [ ] **Discussions categories.** Discussions → ⚙️ → keep *Q&A*, *Ideas*, *Show and tell*,
       *Announcements* (maintainers only).
-- [ ] **DCO check.** Install the free [DCO GitHub App](https://github.com/apps/dco) on the repo,
-      then add `DCO` to the required status checks in the `main` ruleset. It fails PRs whose
-      commits aren't signed off (see CONTRIBUTING.md).
+- [ ] **DCO check.** Install the free [DCO GitHub App](https://github.com/apps/dco) on the repo
+      *before* running the script: the script makes its `DCO` check required on `main`. It fails
+      PRs whose commits aren't signed off (see CONTRIBUTING.md).
 - [ ] **Sponsorship (optional).** Add `.github/FUNDING.yml` (GitHub Sponsors, Geyser, or a
       Lightning address link) to show a Sponsor button.
 - [ ] **OpenSSF Best Practices badge (optional).** Fill in the questionnaire at
