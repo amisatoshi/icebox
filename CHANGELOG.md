@@ -6,6 +6,8 @@ All notable changes to Icebox are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-03
+
 ### Security
 - eMudhra CA compromise (RUSTSEC-2026-0382): `rustls-webpki` 0.103.16 and `webpki-roots` 1.0.11,
   the same fix as Frostsnap v0.4.1. Electrum `ssl://` connections no longer trust certificate chains
@@ -72,5 +74,6 @@ All notable changes to Icebox are recorded here. The format follows
   history over Electrum, receive with on-device address check, send with per-device signing and
   broadcast, watch-only descriptor, Electrum server settings.
 
-[Unreleased]: https://github.com/OWNER/icebox/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/OWNER/icebox/releases/tag/v0.1.0
+[Unreleased]: https://github.com/amisatoshi/icebox/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/amisatoshi/icebox/releases/tag/v0.2.0
+[0.1.0]: https://github.com/amisatoshi/icebox/releases/tag/v0.1.0
