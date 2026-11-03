@@ -566,7 +566,7 @@ function wizardName(w) {
   return h("div", { class: "card" },
     h("label", { class: "field" }, "Wallet name",
       h("input", {
-        id: "wz-name", type: "text", value: w.name, maxlength: 20, placeholder: "e.g. Family savings",
+        id: "wz-name", type: "text", value: w.name, maxlength: 20, placeholder: "e.g. Cold storage",
         oninput: (e) => (w.name = e.target.value),
       }),
     ),

@@ -81,7 +81,7 @@ from source yourself, so you know exactly what is running.
 - **Erase device**, confirmed on the device's own screen, with a warning if it holds a wallet share
 - **Restore from devices** (sidebar, or Wallet → Restore from devices): plug in a wallet's devices,
   together or one after another, and Icebox asks each which wallet shares it holds, groups them by
-  wallet ("Family savings: 2 of 2 needed") and rebuilds the wallet in one click. Use it for wallets
+  wallet ("Cold storage: 2 of 2 needed") and rebuilds the wallet in one click. Use it for wallets
   made in the official app. Devices are only read; nothing on them changes. Uses the official
   `frostsnap_core` restoration code.
 - Wallets are labelled "2 to sign" rather than "2-of-3": a wallet restored from some of its devices
