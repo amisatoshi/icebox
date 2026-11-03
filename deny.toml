@@ -5,12 +5,15 @@ all-features = false
 [advisories]
 # Fail on known vulnerabilities and on crates marked unsound. Yanked crates are an error too.
 yanked = "deny"
+# Each ignore says why it doesn't affect Icebox. Review them when the Frostsnap pin moves.
 ignore = [
-  # { id = "RUSTSEC-0000-0000", reason = "why it doesn't affect Icebox" },
+  { id = "RUSTSEC-2025-0141", reason = "bincode is unmaintained, not vulnerable; it comes in through the official Frostsnap crates (device message encoding) and has no maintained drop-in replacement there" },
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is unmaintained, not vulnerable; build-time only, via Tauri's GTK bindings on Linux" },
+  { id = "RUSTSEC-2023-0071", reason = "Marvin attack needs timing of RSA private-key operations; Icebox (via frostsnap_comms) only verifies device genuineness certificates with public keys" },
 ]
 
 [licenses]
-# Permissive licences compatible with shipping Icebox under MIT OR Apache-2.0.
+# Permissive licences compatible with shipping Icebox under MIT.
 allow = [
   "MIT",
   "Apache-2.0",
@@ -25,8 +28,39 @@ allow = [
   "BSL-1.0",
   "MPL-2.0",
   "CDLA-Permissive-2.0",
+  # secp256kfun, schnorr_fun, sigma_fun, vrf_fun (the cryptography under Frostsnap)
+  "0BSD",
+  # hex_lit: MIT plus "no false attribution", still permissive
+  "MITNFA",
 ]
 confidence-threshold = 0.9
+
+# The official Frostsnap crates are MIT (LICENSE at the root of github.com/frostsnap/frostsnap)
+# but don't declare it in their Cargo.toml files.
+[[licenses.clarify]]
+crate = "frostsnap_core"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+crate = "frostsnap_coordinator"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+crate = "frostsnap_comms"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+crate = "frostsnap_macros"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+crate = "frost_backup"
+expression = "MIT"
+license-files = []
 
 [bans]
 multiple-versions = "allow"

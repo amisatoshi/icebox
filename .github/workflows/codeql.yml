@@ -13,6 +13,9 @@ permissions:
 
 jobs:
   analyze:
+    # Uploading results needs code scanning, which is free only for public repositories.
+    # Until the repo is public this job is skipped rather than failing.
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-22.04
     permissions:
       contents: read

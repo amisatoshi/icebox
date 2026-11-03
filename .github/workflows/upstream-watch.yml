@@ -1,0 +1,51 @@
+# Checks once a day for a new Frostsnap release and opens an issue about it, so you get an email
+# and a to-do in one place. Reviewing a release: see upstream/README.md.
+name: upstream watch
+
+on:
+  schedule:
+    - cron: "41 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write   # to open the reminder issue; nothing else
+
+jobs:
+  frostsnap:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare with the newest Frostsnap release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          known="$(tr -d '[:space:]' < upstream/FROSTSNAP_RELEASE)"
+          latest="$(git ls-remote --tags --refs --sort=-v:refname \
+                     https://github.com/frostsnap/frostsnap.git 'v*' \
+                   | head -n1 | sed 's#.*refs/tags/##')"
+          echo "reviewed: $known  newest: $latest"
+          if [ -z "$latest" ] || [ "$latest" = "$known" ]; then
+            echo "Nothing new."
+            exit 0
+          fi
+          title="Frostsnap $latest is out (Icebox reviewed $known)"
+          open="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq length)"
+          if [ "$open" != "0" ]; then
+            echo "Issue already open."
+            exit 0
+          fi
+          {
+            echo "Frostsnap has a newer release than the one Icebox was last reviewed against."
+            echo
+            echo "- Release: https://github.com/frostsnap/frostsnap/releases/tag/$latest"
+            echo "- Changes since the reviewed one: https://github.com/frostsnap/frostsnap/compare/$known...$latest"
+            echo
+            echo "To do:"
+            echo "1. Read the changes. Security fixes first: a dependency bump (update Icebox's Cargo.lock) or a code/firmware change (move the pin)?"
+            echo "2. Update Icebox, test with devices, release."
+            echo "3. Put $latest in upstream/FROSTSNAP_RELEASE, add a line to the review log in upstream/README.md, and close this issue."
+          } > body.md
+          gh issue create --title "$title" --body-file body.md

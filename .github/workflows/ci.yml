@@ -64,6 +64,23 @@ jobs:
       - name: Check
         run: cargo check --workspace --all-targets --locked
 
+  macos:
+    name: compile (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain (version from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup toolchain install "$(grep '^channel' rust-toolchain.toml | cut -d'"' -f2)" \
+            --profile minimal --component rustfmt,clippy
+          rustup show
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Check
+        run: cargo check --workspace --all-targets --locked
+
   ui:
     name: interface checks
     runs-on: ubuntu-22.04

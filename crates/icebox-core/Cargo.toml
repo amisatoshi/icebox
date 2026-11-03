@@ -3,6 +3,8 @@ name = "icebox-core"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+# Not published to crates.io (so path and git dependencies are fine for cargo-deny).
+publish = false
 description = "Third-party Frostsnap coordinator built on the official frostsnap crates"
 
 [dependencies]

@@ -29,7 +29,9 @@
       "msi",
       "deb",
       "rpm",
-      "appimage"
+      "appimage",
+      "app",
+      "dmg"
     ],
     "category": "Finance",
     "shortDescription": "Desktop wallet for Frostsnap devices",
@@ -38,7 +40,8 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.png",
-      "icons/icon.ico"
+      "icons/icon.ico",
+      "icons/icon.icns"
     ],
     "linux": {
       "deb": {

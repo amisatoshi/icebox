@@ -205,6 +205,7 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
     },
     address: ({ keyId, index }) => { const k = findKey(keyId); const a = address(k.network, index + 1); return { index, address: a, used: index < 2 && wallets[keyId].txs.length > 0, qr_svg: qr(a) }; },
     descriptor_qr: () => qr("demo descriptor"),
+    btcpay_scheme: () => `tpubDemo${hex(70)}-[taproot]`,
     mark_backup_complete: ({ keyId, deviceId }) => { const k = findKey(keyId); k.devices.find((d) => d.id === deviceId).backup_done = true; emitKeys(); },
     descriptor: ({ keyId }) => `tr([${hex(8)}/86'/1'/0']tpubDemo${hex(70)}/<0;1>/*)#${hex(8)}  (demo)`,
 

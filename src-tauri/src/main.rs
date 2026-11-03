@@ -184,6 +184,11 @@ fn descriptor_qr(state: State<'_, AppState>, key_id: String) -> CmdResult<String
     service(&state)?.descriptor_qr(&key_id).map_err(err)
 }
 
+#[tauri::command(async)]
+fn btcpay_scheme(state: State<'_, AppState>, key_id: String) -> CmdResult<String> {
+    service(&state)?.btcpay_scheme(&key_id).map_err(err)
+}
+
 // ---------- restore ----------
 
 #[tauri::command(async)]
@@ -427,6 +432,7 @@ fn main() {
             addresses,
             address,
             descriptor_qr,
+            btcpay_scheme,
             display_backup,
             mark_backup_complete,
             descriptor,

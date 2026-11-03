@@ -4,7 +4,7 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/OWNER/icebox/badge)](https://scorecard.dev/viewer/?uri=github.com/OWNER/icebox)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
-A self-built desktop wallet for [Frostsnap](https://frostsnap.com) devices, for Windows and Linux.
+A self-built desktop wallet for [Frostsnap](https://frostsnap.com) devices, for Windows, macOS and Linux.
 
 Icebox is a **third-party coordinator**: it does the job the official Frostsnap app does (talking
 to the devices over USB, running the FROST key generation and signing protocol, keeping track of
@@ -88,6 +88,8 @@ from source yourself, so you know exactly what is running.
   can't know how many devices exist in total.
 - **Check a backup**: enter your written-down words on the device; it says whether they match
 - All receive addresses, with "used" marks to discourage reuse; descriptor as a QR code
+- **BTCPay Server**: copy the wallet's key in BTCPay's format (`xpub…-[taproot]`) so a shop can
+  take payments straight into the wallet; spending still needs the devices
 - About box (version, Frostsnap commit, expected firmware, data folder)
 - Transactions in History open on mempool.space in your browser
 - Only one copy of Icebox runs at a time, and it remembers its window size and position
@@ -127,6 +129,14 @@ Other distributions: see the [Tauri prerequisites](https://v2.tauri.app/start/pr
 3. WebView2 is already part of Windows 10/11.
 4. In a new terminal: `cargo install tauri-cli --version "^2" --locked`
 
+### macOS (Apple Silicon or Intel)
+
+1. Install Apple's command-line tools: `xcode-select --install`
+2. Install Rust from [rustup.rs](https://rustup.rs).
+3. In a new terminal: `cargo install tauri-cli --version "^2" --locked`
+
+No USB driver or udev rule is needed on macOS.
+
 ### Run and build
 
 From the `icebox` folder:
@@ -134,15 +144,15 @@ From the `icebox` folder:
 ```bash
 cargo test -p icebox-core   # quick checks of the core crate
 cargo tauri dev             # run it
-cargo tauri build           # installers: .msi on Windows, .deb/.rpm/.AppImage on Linux
+cargo tauri build           # installers: .msi on Windows, .dmg on macOS, .deb/.rpm/.AppImage on Linux
 ```
 
 The first build downloads and compiles a few hundred crates and takes a while.
 
 ## Sharing builds with your team
 
-`cargo tauri build` only builds for the system it runs on. Build Windows installers on Windows and
-Linux packages on Linux. Output goes to `target/release/bundle/`:
+`cargo tauri build` only builds for the system it runs on: Windows installers on Windows, the
+Mac app on a Mac, Linux packages on Linux. Output goes to `target/release/bundle/`:
 
 | System  | File | Notes |
 |---------|------|-------|
@@ -150,15 +160,26 @@ Linux packages on Linux. Output goes to `target/release/bundle/`:
 | Linux   | `deb/Icebox_0.1.0_amd64.deb` | Debian/Ubuntu; also installs the udev rule for the devices |
 | Linux   | `rpm/Icebox-0.1.0-1.x86_64.rpm` | Fedora etc.; also installs the udev rule |
 | Linux   | `appimage/Icebox_0.1.0_amd64.AppImage` | any distro; install `linux/99-frostsnap.rules` by hand |
+| macOS   | `dmg/Icebox_0.1.0_aarch64.dmg` | open it and drag Icebox to Applications |
+
+For one Mac app that runs on both Apple Silicon and Intel, build with
+`rustup target add aarch64-apple-darwin x86_64-apple-darwin` and
+`cargo tauri build --target universal-apple-darwin` (output under
+`target/universal-apple-darwin/release/bundle/dmg/`). GitHub's release workflow does this.
 
 The simplest way to get both is to let GitHub build them: push this folder to a GitHub repository
-and push a version tag. `.github/workflows/release.yml` builds both systems from scratch, records
+and push a version tag (or run the **release** workflow by hand from the Actions tab).
+`.github/workflows/release.yml` builds Windows, macOS and Linux from scratch, records
 build provenance, and (after you approve) makes a draft release with the installers and a
 `SHA256SUMS` file. See [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md).
 
 **Unsigned builds.** The installers aren't code-signed, so Windows SmartScreen will warn
 ("Windows protected your PC"). Testers click **More info → Run anyway**. Code signing removes the
 warning but needs a paid certificate. Worth it for a public release, not for internal testing.
+
+**macOS:** the app isn't signed or notarised yet, so macOS refuses to open it the first time.
+Testers go to **System Settings → Privacy & Security** and click **Open Anyway**. Signing needs an
+Apple Developer account (US$99 a year).
 
 **Tell testers:** use Signet only; close the official Frostsnap app before opening Icebox; on
 Linux AppImage, install the udev rule (see Building → Linux).
@@ -193,6 +214,9 @@ app, or move the pin to a Frostsnap commit that matches your firmware.
 
 `Cargo.lock` started as a copy of Frostsnap's own lock file, so the shared dependencies (BDK,
 rusqlite, secp256kfun and so on) resolve to the same versions upstream builds with.
+
+When Frostsnap releases a new version, the daily **upstream watch** workflow opens an issue (see
+[upstream/README.md](upstream/README.md) for how to review one).
 
 To update the pin: change `rev` in the root `Cargo.toml`, run `cargo update -p frostsnap_coordinator`,
 and fix anything the upstream API changed (the code that touches it is all in

@@ -901,6 +901,12 @@ impl Service {
         )
     }
 
+    /// The wallet as a BTCPay Server derivation scheme (`xpub…-[taproot]`), so a shop can take
+    /// payments into it. BTCPay only watches; spending stays with the devices.
+    pub fn btcpay_scheme(&self, key_id: &str) -> Result<String> {
+        crate::btcpay_derivation_scheme(&self.descriptor(key_id)?).map_err(|e| anyhow!(e))
+    }
+
     /// The descriptor as a QR code, for scanning into a watch-only wallet (Sparrow, the
     /// official app, another Icebox). Low error correction keeps the code small enough to scan
     /// easily from a screen.

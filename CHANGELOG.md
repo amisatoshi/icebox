@@ -6,7 +6,18 @@ All notable changes to Icebox are recorded here. The format follows
 
 ## [Unreleased]
 
+### Security
+- eMudhra CA compromise (RUSTSEC-2026-0382): `rustls-webpki` 0.103.16 and `webpki-roots` 1.0.11,
+  the same fix as Frostsnap v0.4.1. Electrum `ssl://` connections no longer trust certificate chains
+  through the compromised intermediates.
+
 ### Added
+- Daily check for new Frostsnap releases (`.github/workflows/upstream-watch.yml`), which opens an
+  issue so you're emailed; review notes in `upstream/README.md`.
+- **BTCPay Server export** (Details tab): the wallet's extended public key in BTCPay's Taproot
+  format, `xpub…-[taproot]`, with setup steps and safety notes.
+- **macOS builds**: a universal `.dmg` (Apple Silicon and Intel) from the release workflow, a
+  macOS compile check in CI, and macOS build instructions.
 - **Check a backup** (Backups tab): type the words you wrote down on the device itself, and it
   confirms they match its share. The words never reach the computer. A match marks the device as
   backed up. Uses the official coordinator's check-backup protocol.

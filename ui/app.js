@@ -1294,8 +1294,12 @@ async function doBroadcast(w, sessionId) {
 async function loadDescriptor() {
   const w = state.wallet;
   if (!w || w.descriptor) return;
-  const [d, qr] = await Promise.all([call("descriptor", { keyId: w.keyId }), call("descriptor_qr", { keyId: w.keyId })]);
-  if (d) { w.descriptor = d; w.descriptorQr = qr || null; render(); }
+  const [d, qr, btcpay] = await Promise.all([
+    call("descriptor", { keyId: w.keyId }),
+    call("descriptor_qr", { keyId: w.keyId }),
+    call("btcpay_scheme", { keyId: w.keyId }),
+  ]);
+  if (d) { w.descriptor = d; w.descriptorQr = qr || null; w.btcpay = btcpay || null; render(); }
 }
 
 function renderDetails(key, w) {
@@ -1314,7 +1318,26 @@ function renderDetails(key, w) {
       ),
       w.descriptorQr ? h("img", { class: "qr", src: w.descriptorQr, alt: "QR code of the watch-only descriptor" }) : null,
     ) : h("p", { class: "muted", text: "Loading…" }),
+    renderBtcpay(key, w),
     renderRemoveWallet(key, w),
+  );
+}
+
+// The wallet's extended public key in BTCPay Server's format, so a shop can take payments
+// straight into it. BTCPay can only watch: spending still needs the devices, here in Icebox.
+function renderBtcpay(key, w) {
+  if (!w.btcpay) return null;
+  return h("div", { class: "stack" },
+    h("h3", { text: "Accept payments with BTCPay Server" }),
+    h("p", { class: "muted small", text: "In BTCPay: your store → Wallets → Bitcoin → Connect an existing wallet → Enter extended public key, and paste this. BTCPay then gives each invoice its own address from this wallet. It can see payments but never spend them." }),
+    h("div", { class: "address-box small", text: w.btcpay }),
+    h("div", { class: "row" }, h("button", { class: "btn", onclick: () => navigator.clipboard.writeText(w.btcpay).then(() => toast("Copied")) }, "Copy for BTCPay")),
+    h("div", { class: "notice" },
+      h("strong", { text: "Before taking real payments: " }),
+      "check that the first address BTCPay shows matches this wallet's address #0 on the Receive tab. ",
+      "Use a wallet just for the shop: BTCPay and Icebox both hand out addresses from it, so using it for other payments too can give two payers the same address. ",
+      key.network === "bitcoin" ? "Anyone who has this key can see every payment to the wallet, so only paste it into a BTCPay server you run or trust." : "",
+    ),
   );
 }
 

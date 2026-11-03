@@ -11,6 +11,7 @@ testers and users ask for. Ideas and votes are welcome in Discussions.
 - Menu bar, About page, firmware check, erase device
 - Transaction links to mempool.space from the history page
 - Check a backup on the device; all receive addresses with "used" marks; descriptor QR code
+- BTCPay Server export (`xpub…-[taproot]`); macOS builds
 
 ## Next
 
@@ -41,7 +42,7 @@ testers and users ask for. Ideas and votes are welcome in Discussions.
 - **Restore from written-down backup words**
 - **Firmware upgrades from Icebox**, using the official coordinator's upgrade protocol and the
   official signed firmware (devices only accept firmware signed by Frostsnap)
-- **Code-signed Windows installer**
+- **Code-signed Windows installer and signed, notarised macOS app**
 
 ## Exploring
 
@@ -50,6 +51,5 @@ testers and users ask for. Ideas and votes are welcome in Discussions.
   protocol supports Nostr keys, but devices need an approval screen for Nostr events first;
   this depends on Frostsnap firmware.
 - **Arabic and right-to-left support**, then other languages
-- **macOS version**
 - **Command-line tool** built on `icebox-core`
 - **Android** version
