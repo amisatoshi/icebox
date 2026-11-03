@@ -9,6 +9,9 @@ yanked = "deny"
 ignore = [
   { id = "RUSTSEC-2025-0141", reason = "bincode is unmaintained, not vulnerable; it comes in through the official Frostsnap crates (device message encoding) and has no maintained drop-in replacement there" },
   { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is unmaintained, not vulnerable; build-time only, via Tauri's GTK bindings on Linux" },
+  { id = "RUSTSEC-2026-0370", reason = "zvariant: merged into zbus 6, not vulnerable; comes in through Tauri's opener and single-instance plugins (Linux D-Bus). Drop when Tauri moves to zbus 6" },
+  { id = "RUSTSEC-2026-0371", reason = "zbus_names: merged into zbus 6, not vulnerable; same route as above" },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive: merged into zbus 6, not vulnerable; same route as above" },
   { id = "RUSTSEC-2023-0071", reason = "Marvin attack needs timing of RSA private-key operations; Icebox (via frostsnap_comms) only verifies device genuineness certificates with public keys" },
 ]
 
