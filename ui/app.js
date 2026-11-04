@@ -23,6 +23,7 @@ const state = {
   erase: null,          // { id, step: "confirm" | "waiting" } while erasing a device
   restore: null,        // restore page: { scan, busy }
   restoreScanning: false,
+  savedRestores: [],    // unfinished restores saved in the database (sidebar + Restore page)
   startupError: null,
   devices: [],
   keys: [],
@@ -199,6 +200,15 @@ function renderSidebar() {
         ),
       ),
     ),
+    // Unfinished restores: click to continue on the Restore page.
+    ...state.savedRestores.map((r) =>
+      h("li", {},
+        h("button", { class: "restoring" + (state.view.name === "restore" ? " active" : ""), onclick: openRestore, title: "Restore in progress: click to continue" },
+          h("span", { class: "wname", text: r.name }),
+          h("span", { class: "wsub", text: r.restorable ? "restore ready to finish" : `restoring · ${savedCount(r)}` }),
+        ),
+      ),
+    ),
   );
 }
 
@@ -245,7 +255,7 @@ async function enterDemo() {
   Object.assign(state, {
     devices: [], keys: [], chain: {}, nonces: null, keygen: null, verify: null, backup: null,
     signing: {}, wizard: null, wallet: null, settings: null, erase: null, startupError: null,
-    restore: null, restoreScanning: false,
+    restore: null, restoreScanning: false, savedRestores: [],
   });
   const [devices, keys] = await Promise.all([call("list_devices"), call("list_keys")]);
   state.devices = devices || [];
@@ -283,7 +293,7 @@ function scheduleRestoreRefresh() {
 async function refreshRestore() {
   if (state.view.name !== "restore" || !state.restore) return;
   const scan = await call("restore_candidates");
-  if (scan && state.restore) { state.restore.scan = scan; render(); }
+  if (scan && state.restore) { state.restore.scan = scan; state.savedRestores = scan.saved || []; render(); }
 }
 
 const RESTORE_STATUS = {
@@ -293,6 +303,78 @@ const RESTORE_STATUS = {
   not_bitcoin: "Not a bitcoin wallet. Icebox can't restore this yet.",
   unknown_threshold: "These devices don't say how many are needed. Try restoring; Icebox will tell you if more are needed.",
 };
+
+async function refreshSavedRestores() {
+  const list = await call("saved_restores");
+  if (list) { state.savedRestores = list; render(); }
+}
+
+/** "1 of 2 devices" for a saved restore. */
+function savedCount(r) {
+  if (r.found === null || r.found === undefined) return "checking which devices fit";
+  return r.threshold ? `${r.found} of ${r.threshold} devices` : `${r.found} device${r.found === 1 ? "" : "s"}`;
+}
+
+function renderSavedRestore(r) {
+  const rs = state.restore || {};
+  const need = r.threshold || null;
+  const pct = need && r.found !== null ? Math.min(100, Math.round((r.found / need) * 100)) : 0;
+  const card = h("div", { class: "card restore-card saved" + (r.restorable ? " ready" : "") },
+    h("div", { class: "row between" },
+      h("div", { class: "row" },
+        h("h2", { text: r.name }),
+        r.network ? h("span", { class: "pill" + (r.network === "bitcoin" ? " main" : ""), text: networkLabel(r.network) }) : null,
+        h("span", { class: "pill warn", text: "saved restore" }),
+      ),
+      h("strong", { text: r.restorable ? "Ready" : savedCount(r) + (need ? " needed" : "") }),
+    ),
+    need ? h("div", { class: "meter" }, h("span", { style: `width:${r.restorable ? 100 : pct}%` })) : null,
+    h("div", { class: "list" },
+      ...r.devices.map((d) => h("div", { class: "item" },
+        h("span", { text: d.name || "Device " + shortId(d.id) }),
+        h("div", { class: "row" },
+          h("span", { class: "pill", text: `share #${d.share_number}` }),
+          d.fits === "no"
+            ? h("span", { class: "pill bad", text: "doesn't fit this wallet" })
+            : h("span", { class: "pill" + (d.connected ? " ok" : ""), text: d.connected ? "plugged in" : "recorded" }),
+        ),
+      )),
+    ),
+    h("p", { class: r.restorable ? "" : "muted", text: r.restorable
+      ? "Enough devices recorded. Ready to finish."
+      : "Saved. Plug in this wallet's other devices here, now or another day: each one is recorded as soon as it answers, and progress survives closing Icebox." }),
+    r.incompatible ? h("div", { class: "notice warn", text: `${r.incompatible} recorded share${r.incompatible === 1 ? " doesn't" : "s don't"} belong to this wallet and won't be used.` }) : null,
+  );
+  if (r.restorable && r.network === "bitcoin") card.append(h("div", { class: "notice warn", text: "This is a mainnet wallet holding real bitcoin. Icebox is new and unaudited: restoring only reads the devices, but be careful sending from it." }));
+  const busy = rs.busy === r.restoration_id;
+  const actions = h("div", { class: "row" });
+  if (r.restorable) {
+    actions.append(h("button", {
+      class: "btn primary", disabled: busy,
+      onclick: async () => {
+        rs.busy = r.restoration_id; render();
+        const keyId = await call("finish_saved_restore", { restorationId: r.restoration_id });
+        rs.busy = null;
+        if (keyId) { toast(`${r.name} restored`); await refreshSavedRestores(); openWallet(keyId); } else render();
+      },
+    }, busy ? "Restoring…" : `Finish restoring ${r.name}`));
+  }
+  if (rs.confirmCancel === r.restoration_id) {
+    actions.append(
+      h("span", { class: "muted small", text: "Forget this restore? Nothing on the devices changes." }),
+      h("button", { class: "btn danger small", onclick: async () => {
+        rs.confirmCancel = null;
+        if (await call("cancel_saved_restore", { restorationId: r.restoration_id }) !== undefined) { toast(`Restore of ${r.name} cancelled`); }
+        await refreshRestore(); await refreshSavedRestores();
+      } }, "Yes, cancel restore"),
+      h("button", { class: "btn ghost small", onclick: () => { rs.confirmCancel = null; render(); } }, "Keep it"),
+    );
+  } else {
+    actions.append(h("button", { class: "btn ghost small", onclick: () => { rs.confirmCancel = r.restoration_id; render(); } }, "Cancel restore"));
+  }
+  card.append(actions);
+  return card;
+}
 
 function renderRestore() {
   const r = state.restore || {};
@@ -305,18 +387,26 @@ function renderRestore() {
       ),
     ),
     h("div", { class: "card" },
-      h("p", { text: "Plug in the wallet's devices. You can chain them all at once, or plug them in one after another: Icebox remembers what each one said. You need as many devices as the wallet's threshold (e.g. 2 for a 2-of-3)." }),
+      h("p", { text: "Plug in the wallet's devices. You can chain them all at once, or plug them in one after another. You need as many devices as the wallet's threshold (e.g. 2 for a 2-of-3)." }),
+      h("p", { class: "muted small", text: "Devices kept in different places? Plug in the first one and choose Save and continue later. Icebox saves the restore, and you can add the other devices on another day, even after closing Icebox." }),
       h("p", { class: "muted small", text: "Devices are only asked which wallets they hold. Nothing on them changes, and their backup words never leave them." }),
       scan
         ? h("p", { class: "muted small", text: `${scan.answered.length} device${scan.answered.length === 1 ? "" : "s"} answered${scan.waiting.length ? ` · waiting for ${scan.waiting.length}` : ""}` })
         : h("p", { class: "muted small", text: "Asking devices…" }),
       state.demo ? h("div", { class: "row" },
-        h("button", { class: "btn small", onclick: async () => { await call("demo_plug_restore_devices"); scheduleRestoreRefresh(); } }, "Demo: plug in two devices holding an older wallet"),
+        h("button", { class: "btn small", onclick: async () => { await call("demo_plug_restore_devices"); scheduleRestoreRefresh(); } }, "Demo: plug in a device holding an older wallet"),
       ) : null,
     ),
   );
 
-  if (scan && scan.candidates.length === 0) {
+  const saved = scan ? scan.saved : state.savedRestores;
+  if (saved.length) {
+    page.append(h("h3", { text: "Restores in progress" }), ...saved.map(renderSavedRestore));
+  }
+  const candidates = scan ? scan.candidates.filter((c) => c.status !== "saved") : [];
+  if (saved.length && candidates.length) page.append(h("h3", { text: "Found on plugged-in devices" }));
+
+  if (scan && candidates.length === 0 && !saved.length) {
     page.append(h("div", { class: "card empty" },
       h("p", { text: scan.answered.length ? "None of these devices hold a wallet share." : "No devices have answered yet." }),
       h("p", { class: "small", text: "Blank devices hold nothing. Plug in devices that were set up as part of a wallet." }),
@@ -324,7 +414,7 @@ function renderRestore() {
     return page;
   }
 
-  for (const c of (scan ? scan.candidates : [])) {
+  for (const c of candidates) {
     const need = c.threshold || null;
     const pct = need ? Math.min(100, Math.round((c.found / need) * 100)) : 0;
     const card = h("div", { class: "card restore-card" + (c.status === "ready" ? " ready" : "") },
@@ -363,6 +453,20 @@ function renderRestore() {
           if (keyId) { toast(`${c.name} restored`); openWallet(keyId); } else render();
         },
       }, r.busy === c.group_id ? "Restoring…" : `Restore ${c.name}`));
+    }
+    if (c.status === "need_more" || c.status === "unknown_threshold") {
+      actions.append(h("button", {
+        class: "btn" + (c.status === "need_more" ? " primary" : ""),
+        disabled: r.busy === c.group_id,
+        title: "Saves which devices you've plugged in, so you can add the rest later, even after closing Icebox",
+        onclick: async () => {
+          r.busy = c.group_id; render();
+          const id = await call("save_restore", { groupId: c.group_id });
+          r.busy = null;
+          if (id) toast(`Restore of ${c.name} saved. Plug in its other devices whenever you're ready.`);
+          await refreshRestore(); await refreshSavedRestores();
+        },
+      }, "Save and continue later"));
     }
     if (actions.childNodes.length) card.append(actions);
     page.append(card);
@@ -442,6 +546,7 @@ function renderDevices() {
       h("p", { text: "No devices connected." }),
       h("p", { class: "small", text: "Plug a Frostsnap into a USB port. You can daisy-chain more devices off the first one." }),
       state.demo ? null : h("button", { class: "btn", onclick: enterDemo }, "No devices to hand? Try demo mode"),
+      state.demo ? null : linuxUsbHint(),
     ));
     return page;
   }
@@ -489,6 +594,19 @@ function renderDevices() {
     ),
   ));
   return page;
+}
+
+// On Linux, a device whose screen is on but that isn't listed almost always means the USB rule
+// isn't installed (the AppImage can't install it). Show the one-line fix.
+const LINUX_USB_RULE_CMD = "sudo wget -O /etc/udev/rules.d/70-frostsnap.rules https://raw.githubusercontent.com/amisatoshi/icebox/main/linux/70-frostsnap.rules && sudo udevadm control --reload && sudo udevadm trigger";
+function linuxUsbHint() {
+  const ua = navigator.userAgent || "";
+  if (!/Linux/.test(ua) || /Android/.test(ua)) return null;
+  return h("div", { class: "notice linux-hint" },
+    h("p", { text: "On Linux, and the device's screen is on but it isn't listed here? Linux needs a USB rule so Icebox can use the device (the .deb and .rpm packages install it; the AppImage can't). Run this once in a terminal, then unplug and replug the device:" }),
+    h("div", { class: "address-box small", text: LINUX_USB_RULE_CMD }),
+    h("div", { class: "row" }, h("button", { class: "btn small", onclick: () => navigator.clipboard.writeText(LINUX_USB_RULE_CMD).then(() => toast("Copied")) }, "Copy command")),
+  );
 }
 
 function renderErase() {
@@ -1584,6 +1702,7 @@ async function main() {
   state.devices = devices || [];
   state.keys = keys || [];
   state.appInfo = await call("app_info");
+  state.savedRestores = (await call("saved_restores")) || [];
   state.ready = true;
   if (state.keys.length) openWallet(state.keys[0].key_id);
   else render();

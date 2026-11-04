@@ -1,6 +1,6 @@
 [package]
 name = "icebox-core"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 # Not published to crates.io (so path and git dependencies are fine for cargo-deny).

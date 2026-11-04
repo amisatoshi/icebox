@@ -14,6 +14,9 @@ from source yourself, so you know exactly what is running.
 > **Status: early and unaudited.** Use Signet (test coins) until you have walked through creating a
 > wallet, receiving and sending yourself. Keep mainnet amounts small until you trust it.
 
+**📖 [User guide](docs/guide/README.md)**: installing, demo mode, creating a wallet, receiving,
+sending, restoring, backups, BTCPay Server and troubleshooting, with screenshots.
+
 ## How it fits together
 
 ```
@@ -57,7 +60,7 @@ from source yourself, so you know exactly what is running.
 - **Privacy from the server.** The default Electrum servers are public ones, which can see which
   addresses you ask about. For mainnet, point Icebox at your own node in Settings.
 
-## What it can do (v0.1)
+## What it can do
 
 - See devices plugged in (including daisy chains), and top up their signing nonces
 - Create a new wallet: name the devices, choose the threshold (e.g. 2-of-3), check the code every
@@ -96,6 +99,15 @@ from source yourself, so you know exactly what is running.
 - One wallet per device, as in the official app: new wallets use blank devices
 - Remove a wallet from Icebox (the devices keep their shares; restore it any time)
 
+**New in 0.3:**
+
+- **Restore one device at a time**: save a restore after plugging in the first device, then add
+  the others later, at other places, even after closing Icebox (as in the official app).
+  Unfinished restores are listed in the sidebar and on the Restore page, to continue or cancel.
+- **User guide** in [`docs/guide/`](docs/guide/README.md)
+- macOS builds carry an ad-hoc signature, so macOS shows its normal "unidentified developer"
+  prompt instead of calling the app damaged
+
 **Not yet:** firmware upgrades, restoring from written-down backup words, PSBT import/export, Nostr keys,
 accepting self-signed TLS certificates (use `tcp://` for a node on your own network, or a server with
 a proper certificate). For any of those, use the official app.
@@ -115,7 +127,7 @@ sudo apt install build-essential curl wget file pkg-config libssl-dev \
 cargo install tauri-cli --version "^2" --locked
 
 # let your user talk to the devices without root
-sudo cp linux/99-frostsnap.rules /etc/udev/rules.d/
+sudo cp linux/70-frostsnap.rules /etc/udev/rules.d/
 sudo udevadm control --reload && sudo udevadm trigger
 ```
 
@@ -156,11 +168,11 @@ Mac app on a Mac, Linux packages on Linux. Output goes to `target/release/bundle
 
 | System  | File | Notes |
 |---------|------|-------|
-| Windows | `msi/Icebox_0.2.0_x64_en-US.msi` | the one file to send; installs to Start menu with an uninstaller |
-| Linux   | `deb/Icebox_0.2.0_amd64.deb` | Debian/Ubuntu; also installs the udev rule for the devices |
-| Linux   | `rpm/Icebox-0.2.0-1.x86_64.rpm` | Fedora etc.; also installs the udev rule |
-| Linux   | `appimage/Icebox_0.2.0_amd64.AppImage` | any distro; install `linux/99-frostsnap.rules` by hand |
-| macOS   | `dmg/Icebox_0.2.0_aarch64.dmg` | open it and drag Icebox to Applications |
+| Windows | `msi/Icebox_0.3.0_x64_en-US.msi` | the one file to send; installs to Start menu with an uninstaller |
+| Linux   | `deb/Icebox_0.3.0_amd64.deb` | Debian/Ubuntu; also installs the udev rule for the devices |
+| Linux   | `rpm/Icebox-0.3.0-1.x86_64.rpm` | Fedora etc.; also installs the udev rule |
+| Linux   | `appimage/Icebox_0.3.0_amd64.AppImage` | any distro; install `linux/70-frostsnap.rules` by hand |
+| macOS   | `dmg/Icebox_0.3.0_aarch64.dmg` | open it and drag Icebox to Applications |
 
 For one Mac app that runs on both Apple Silicon and Intel, build with
 `rustup target add aarch64-apple-darwin x86_64-apple-darwin` and
@@ -185,6 +197,8 @@ Apple Developer account (US$99 a year).
 Linux AppImage, install the udev rule (see Building → Linux).
 
 ## Using it
+
+The [user guide](docs/guide/README.md) covers every screen step by step. In short:
 
 1. Plug in your Frostsnap devices. They appear under **Plugged in**.
 2. **New wallet**: name it, choose **Signet** to start, name each device (the name appears on the

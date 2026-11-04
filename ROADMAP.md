@@ -12,6 +12,7 @@ testers and users ask for. Ideas and votes are welcome in Discussions.
 - Transaction links to mempool.space from the history page
 - Check a backup on the device; all receive addresses with "used" marks; descriptor QR code
 - BTCPay Server export (`xpub…-[taproot]`); macOS builds
+- **Restore one device at a time**: saved restores you can continue later, at other places
 
 ## Next
 

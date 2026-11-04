@@ -9,8 +9,9 @@ use frostsnap_coordinator::frostsnap_comms::{CoordinatorSendBody, CoordinatorSen
 use frostsnap_coordinator::{Completion, DeviceMode, Sink, UiProtocol};
 use frostsnap_core::coordinator::restoration::{RecoverShare, ToUserRestoration};
 use frostsnap_core::coordinator::CoordinatorToUserMessage;
+use frostsnap_core::device::KeyPurpose;
 use frostsnap_core::message::{CoordinatorRestoration, CoordinatorToDeviceMessage, HeldShare2};
-use frostsnap_core::DeviceId;
+use frostsnap_core::{AccessStructureRef, DeviceId};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
@@ -137,6 +138,26 @@ pub fn share_number(held_share: &HeldShare2) -> u32 {
     u32::try_from(held_share.share_image.index).unwrap_or(u32::MAX)
 }
 
+/// Whether a share a device holds belongs with a saved (unfinished) restore.
+///
+/// Shares that carry their wallet's identity must match the restore's exactly. Shares without it
+/// (devices restored from written-down words, before consolidation) are matched on wallet name and
+/// purpose; the core restoration code still checks every share, and a share that turns out not to
+/// fit is never counted towards the wallet.
+pub fn belongs_to_saved_restore(
+    saved_ref: Option<AccessStructureRef>,
+    saved_name: &str,
+    saved_purpose: KeyPurpose,
+    share_ref: Option<AccessStructureRef>,
+    share_name: Option<&str>,
+    share_purpose: Option<KeyPurpose>,
+) -> bool {
+    match (saved_ref, share_ref) {
+        (Some(saved), Some(share)) => saved == share,
+        _ => share_name == Some(saved_name) && share_purpose == Some(saved_purpose),
+    }
+}
+
 /// Groups everything the scan found by wallet. Shares that carry their wallet's identity are
 /// grouped by it; older ones that don't are grouped by name and threshold, and the restoration
 /// itself rejects any share that turns out not to fit.
@@ -170,4 +191,79 @@ pub fn group(results: &BTreeMap<DeviceId, Option<Vec<HeldShare2>>>) -> Vec<Candi
         }
     }
     groups.into_values().collect()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use frostsnap_coordinator::bdk_chain::bitcoin::Network;
+    use frostsnap_core::{AccessStructureId, KeyId};
+
+    fn wallet(n: u8) -> AccessStructureRef {
+        AccessStructureRef {
+            key_id: KeyId([n; 32]),
+            access_structure_id: AccessStructureId([n; 32]),
+        }
+    }
+
+    const SIGNET: KeyPurpose = KeyPurpose::Bitcoin(Network::Signet);
+    const MAINNET: KeyPurpose = KeyPurpose::Bitcoin(Network::Bitcoin);
+
+    #[test]
+    fn shares_with_an_identity_must_match_it_exactly() {
+        let saved = Some(wallet(1));
+        assert!(belongs_to_saved_restore(
+            saved,
+            "Cold storage",
+            SIGNET,
+            Some(wallet(1)),
+            Some("Cold storage"),
+            Some(SIGNET)
+        ));
+        // same name and network, but a different wallet
+        assert!(!belongs_to_saved_restore(
+            saved,
+            "Cold storage",
+            SIGNET,
+            Some(wallet(2)),
+            Some("Cold storage"),
+            Some(SIGNET)
+        ));
+    }
+
+    #[test]
+    fn shares_without_an_identity_are_matched_by_name_and_purpose() {
+        assert!(belongs_to_saved_restore(
+            Some(wallet(1)),
+            "Cold storage",
+            SIGNET,
+            None,
+            Some("Cold storage"),
+            Some(SIGNET)
+        ));
+        assert!(!belongs_to_saved_restore(
+            None,
+            "Cold storage",
+            SIGNET,
+            None,
+            Some("Cold storage"),
+            Some(MAINNET)
+        ));
+        assert!(!belongs_to_saved_restore(
+            None,
+            "Cold storage",
+            SIGNET,
+            None,
+            Some("Shop"),
+            Some(SIGNET)
+        ));
+        assert!(!belongs_to_saved_restore(
+            None,
+            "Cold storage",
+            SIGNET,
+            None,
+            None,
+            None
+        ));
+    }
 }

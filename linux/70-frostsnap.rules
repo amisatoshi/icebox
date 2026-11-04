@@ -1,0 +1,9 @@
+# Lets the logged-in user talk to Frostsnap devices (Espressif USB serial, 303a:1001)
+# without root. Install with:
+#   sudo cp linux/70-frostsnap.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
+#
+# The number matters: TAG+="uaccess" only takes effect if it's set before systemd's
+# 73-seat-late.rules runs, so this file must sort before 73. (A 99- name is applied too late,
+# and the device stays root-only.)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", MODE="0660", TAG+="uaccess"
