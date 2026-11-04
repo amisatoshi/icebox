@@ -206,6 +206,30 @@ fn restore_wallet(state: State<'_, AppState>, group_id: String) -> CmdResult<Str
     service(&state)?.restore_wallet(&group_id).map_err(err)
 }
 
+#[tauri::command(async)]
+fn save_restore(state: State<'_, AppState>, group_id: String) -> CmdResult<String> {
+    service(&state)?.save_restore(&group_id).map_err(err)
+}
+
+#[tauri::command(async)]
+fn finish_saved_restore(state: State<'_, AppState>, restoration_id: String) -> CmdResult<String> {
+    service(&state)?
+        .finish_saved_restore(&restoration_id)
+        .map_err(err)
+}
+
+#[tauri::command(async)]
+fn cancel_saved_restore(state: State<'_, AppState>, restoration_id: String) -> CmdResult<()> {
+    service(&state)?
+        .cancel_saved_restore(&restoration_id)
+        .map_err(err)
+}
+
+#[tauri::command(async)]
+fn saved_restores(state: State<'_, AppState>) -> CmdResult<Vec<SavedRestoreView>> {
+    Ok(service(&state)?.saved_restores())
+}
+
 // ---------- wallet ----------
 
 #[tauri::command(async)]
@@ -418,6 +442,10 @@ fn main() {
             start_restore_scan,
             restore_candidates,
             restore_wallet,
+            save_restore,
+            finish_saved_restore,
+            cancel_saved_restore,
+            saved_restores,
             data_dir,
             list_devices,
             preview_device_name,

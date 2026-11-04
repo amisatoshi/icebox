@@ -151,6 +151,8 @@ pub struct RestoreScanView {
     /// Devices asked that haven't answered yet.
     pub waiting: Vec<String>,
     pub candidates: Vec<RestoreCandidateView>,
+    /// Unfinished restores saved in the database, to continue or cancel.
+    pub saved: Vec<SavedRestoreView>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,9 +164,39 @@ pub struct RestoreCandidateView {
     pub threshold: Option<u16>,
     /// Different shares found so far.
     pub found: usize,
-    /// "ready", "need_more", "already_here", "not_bitcoin" or "unknown_threshold".
+    /// "ready", "need_more", "already_here", "not_bitcoin", "unknown_threshold", or "saved"
+    /// (every share found is already part of a saved restore, which is shown instead).
     pub status: String,
     pub devices: Vec<RestoreDeviceView>,
+}
+
+/// A restore that was started with fewer devices than it needs, saved so it can be finished
+/// later (even after restarting Icebox), one device at a time.
+#[derive(Debug, Clone, Serialize)]
+pub struct SavedRestoreView {
+    pub restoration_id: String,
+    pub name: String,
+    pub network: Option<String>,
+    /// Shares needed, if known.
+    pub threshold: Option<u16>,
+    /// Different matching shares recorded so far. `None` when there are enough shares but some
+    /// don't fit and Icebox can't yet tell which.
+    pub found: Option<u16>,
+    /// Shares recorded that turned out not to belong to this wallet.
+    pub incompatible: u16,
+    /// Enough matching shares have been recorded to finish.
+    pub restorable: bool,
+    pub devices: Vec<SavedRestoreDeviceView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SavedRestoreDeviceView {
+    pub id: String,
+    pub name: Option<String>,
+    pub share_number: u32,
+    /// "yes", "no" or "unknown" (not known until enough shares are in).
+    pub fits: String,
+    pub connected: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

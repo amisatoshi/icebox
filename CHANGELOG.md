@@ -6,6 +6,35 @@ All notable changes to Icebox are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-05
+
+### Added
+- **Restore one device at a time** (Restore page): after plugging in a wallet's first device,
+  choose **Save and continue later**. The restore is saved in the database using the official
+  `frostsnap_core` restoration code, the same way the official app saves it, so the other devices
+  can be added later, at other places, even after closing Icebox. Each device is recorded as soon
+  as it answers. Unfinished restores are listed in the sidebar and on the Restore page, with
+  **Finish restoring** and **Cancel restore**. Only public information is saved: which wallet each
+  device holds a share of, and the share's number and public image.
+- **User guide** in `docs/guide/`: installing (checking downloads, running unsigned builds on
+  Windows, macOS and Linux), demo mode, devices, creating a wallet, receiving, sending, restoring,
+  backups, descriptor and BTCPay Server export, settings and shortcuts, updating, troubleshooting
+  and an FAQ, with screenshots from demo mode. Linked from the README.
+
+### Changed
+- macOS builds are ad-hoc signed (`signingIdentity: "-"`), so macOS shows its normal
+  "unidentified developer" prompt instead of saying the app is damaged. The app still isn't
+  notarised.
+- Demo mode's "older wallet" devices (now Delta and Echo, so they no longer share names with the
+  devices you create) are plugged in one at a time, to show restoring across places.
+
+### Fixed
+- **Linux: devices weren't usable without `sudo chmod`.** The USB rule was named
+  `99-frostsnap.rules`, which runs after systemd applies `uaccess` (`73-seat-late.rules`), so it
+  never gave the logged-in user access. It's now `70-frostsnap.rules` (the `.deb` and `.rpm`
+  packages replace the old file).
+- Demo mode's About page said version 0.1.0.
+
 ## [0.2.0] - 2026-11-03
 
 ### Security
@@ -74,6 +103,7 @@ All notable changes to Icebox are recorded here. The format follows
   history over Electrum, receive with on-device address check, send with per-device signing and
   broadcast, watch-only descriptor, Electrum server settings.
 
-[Unreleased]: https://github.com/amisatoshi/icebox/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/amisatoshi/icebox/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/amisatoshi/icebox/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/amisatoshi/icebox/releases/tag/v0.2.0
 [0.1.0]: https://github.com/amisatoshi/icebox/releases/tag/v0.1.0

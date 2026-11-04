@@ -39,6 +39,22 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
   let scanning = false;
   const oldWallet = { name: "Old savings", network: "signet", threshold: 2, groupId: "demo-old:" + hex(64) };
   const heldBy = {};    // device id -> [{ groupId, name, network, threshold, share }]
+  let savedRestores = []; // [{ restoration_id, groupId, name, network, threshold, devices: [{ id, share_number }] }]
+  let olderPlugged = 0;   // how many of the older wallet's two devices have been plugged in
+
+  const savedView = (r) => {
+    const found = r.devices.length; const restorable = found >= r.threshold;
+    return {
+      restoration_id: r.restoration_id, name: r.name, network: r.network, threshold: r.threshold, found, incompatible: 0, restorable,
+      devices: r.devices.map((d) => { const dev = devs.find((x) => x.id === d.id); return { id: d.id, name: dev ? dev.name : d.name, share_number: d.share_number, fits: restorable ? "yes" : "unknown", connected: !!dev }; }),
+    };
+  };
+  // Like the real app: devices that belong to a saved restore are recorded in it as they answer.
+  const absorb = () => {
+    for (const r of savedRestores) for (const d of devs) for (const h of heldBy[d.id] || []) {
+      if (h.groupId === r.groupId && !r.devices.some((x) => x.id === d.id)) r.devices.push({ id: d.id, name: d.name, share_number: h.share });
+    }
+  };
 
   const emitDevices = () => devs.forEach((d) => (d.needs_name = !d.name)) || send({ kind: "devices", devices: devs });
   const emitKeys = () => send({ kind: "keys", keys });
@@ -89,7 +105,7 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
 
   const handlers = {
     startup_status: () => "ok",
-    app_info: () => ({ version: "0.1.0", frostsnap_rev: "233f93b6d4ad16552596fad4f80e7a44b9fe4c60", expected_firmware: "v0.4.0", data_dir: "(demo mode: nothing is saved)" }),
+    app_info: () => ({ version: "0.2.0", frostsnap_rev: "233f93b6d4ad16552596fad4f80e7a44b9fe4c60", expected_firmware: "v0.4.0", data_dir: "(demo mode: nothing is saved)" }),
     data_dir: () => "(demo mode: nothing is saved)",
     list_devices: () => devs,
     list_keys: () => keys,
@@ -111,6 +127,7 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
 
     start_restore_scan: () => { scanning = true; later(600, () => send({ kind: "restore_scan_changed" })); },
     restore_candidates: () => {
+      if (scanning) absorb();
       const groups = {};
       const add = (groupId, name, network, threshold, d, share, status) => {
         const g = groups[groupId] = groups[groupId] || { group_id: groupId, name, network, threshold, found: 0, status, devices: [] };
@@ -119,28 +136,57 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
       for (const k of keys) k.devices.forEach((kd) => { const d = devs.find((x) => x.id === kd.id); if (d) add(k.key_id + ":demo", k.name, k.network, k.threshold, d, kd.share_index, "already_here"); });
       for (const d of devs) for (const h of heldBy[d.id] || []) add(h.groupId, h.name, h.network, h.threshold, d, h.share, "need_more");
       const list = Object.values(groups);
-      list.forEach((g) => { if (g.status !== "already_here") g.status = g.found >= g.threshold ? "ready" : "need_more"; });
-      const asked = devs.filter((d) => d.ready);
-      return { answered: scanning ? asked.map((d) => d.id) : [], waiting: [], candidates: list };
-    },
-    demo_plug_restore_devices: () => {
-      if (devs.some((d) => heldBy[d.id])) return;
-      ["Alpha", "Bravo"].forEach((name, i) => {
-        const d = device({ name, needs_name: false, nonces: 8 });
-        heldBy[d.id] = [{ groupId: oldWallet.groupId, name: oldWallet.name, network: oldWallet.network, threshold: oldWallet.threshold, share: i + 1 }];
-        devs.push(d);
+      list.forEach((g) => {
+        if (g.status === "already_here") return;
+        const saved = savedRestores.find((r) => r.groupId === g.group_id);
+        g.status = saved ? "saved" : g.found >= g.threshold ? "ready" : "need_more";
       });
+      const asked = devs.filter((d) => d.ready);
+      return { answered: scanning ? asked.map((d) => d.id) : [], waiting: [], candidates: list, saved: savedRestores.map(savedView) };
+    },
+    saved_restores: () => savedRestores.map(savedView),
+    save_restore: ({ groupId }) => {
+      if (groupId !== oldWallet.groupId) throw "demo mode can only save the pretend older wallet";
+      const holders = devs.filter((d) => (heldBy[d.id] || []).some((h) => h.groupId === groupId));
+      const r = { restoration_id: hex(32), groupId, name: oldWallet.name, network: oldWallet.network, threshold: oldWallet.threshold,
+        devices: holders.map((d) => ({ id: d.id, name: d.name, share_number: heldBy[d.id].find((h) => h.groupId === groupId).share })) };
+      savedRestores.push(r);
+      send({ kind: "restore_scan_changed" });
+      return r.restoration_id;
+    },
+    cancel_saved_restore: ({ restorationId }) => { savedRestores = savedRestores.filter((r) => r.restoration_id !== restorationId); send({ kind: "restore_scan_changed" }); return null; },
+    finish_saved_restore: ({ restorationId }) => {
+      const r = savedRestores.find((x) => x.restoration_id === restorationId);
+      if (!r || r.devices.length < r.threshold) throw "not enough matching shares yet";
+      savedRestores = savedRestores.filter((x) => x !== r);
+      return handlers.restore_wallet({ groupId: r.groupId, saved: r.devices });
+    },
+    // Plugs in the older wallet's devices one at a time (Delta, then Echo), to show restoring
+    // across places. Plugging in Echo unplugs Delta, as if it had stayed at the first place.
+    demo_plug_restore_devices: () => {
+      if (olderPlugged >= 2) return;
+      const i = olderPlugged++;
+      if (i === 1) {
+        const delta = devs.find((d) => d.name === "Delta");
+        if (delta) devs.splice(devs.indexOf(delta), 1);
+      }
+      const d = device({ name: ["Delta", "Echo"][i], needs_name: false, nonces: 8 });
+      heldBy[d.id] = [{ groupId: oldWallet.groupId, name: oldWallet.name, network: oldWallet.network, threshold: oldWallet.threshold, share: i + 1 }];
+      devs.push(d);
       emitDevices();
       later(300, () => send({ kind: "restore_scan_changed" }));
     },
-    restore_wallet: ({ groupId }) => {
+    restore_wallet: ({ groupId, saved }) => {
       if (groupId !== oldWallet.groupId) throw "demo mode can only restore the pretend older wallet";
-      const holders = devs.filter((d) => (heldBy[d.id] || []).some((h) => h.groupId === groupId));
+      const holders = saved
+        ? saved.map((d) => ({ id: d.id, name: d.name }))
+        : devs.filter((d) => (heldBy[d.id] || []).some((h) => h.groupId === groupId));
       if (holders.length < oldWallet.threshold) throw "not enough matching shares yet";
       const keyId = hex(64);
       keys.push({ key_id: keyId, name: oldWallet.name, network: oldWallet.network, threshold: oldWallet.threshold, access_structure_id: hex(64),
         devices: holders.map((d, i) => ({ id: d.id, name: d.name, share_index: i + 1, backup_done: null })) });
       holders.forEach((d) => { heldBy[d.id] = []; });
+      send({ kind: "restore_scan_changed" });
       wallets[keyId] = { height: 268431, nextIndex: 7, txs: [
         { txid: hex(64), net_value: 4200000, fee: 141, confirmations: 2210, timestamp: now() - 86400 * 400 },
         { txid: hex(64), net_value: -650000, fee: 180, confirmations: 900, timestamp: now() - 86400 * 120 },

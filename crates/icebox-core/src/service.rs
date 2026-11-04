@@ -41,11 +41,15 @@ use frostsnap_coordinator::{
     UsbSerialManager,
 };
 use frostsnap_core::bitcoin_transaction::TransactionTemplate;
+use frostsnap_core::coordinator::restoration::{
+    RecoverShare, RestorationState, ShareCompatibility,
+};
 use frostsnap_core::coordinator::{BeginKeygen, CoordFrostKey, CoordinatorSend, FrostCoordinator};
 use frostsnap_core::device::KeyPurpose;
 use frostsnap_core::tweak::{BitcoinAccount, NormalIndex};
 use frostsnap_core::{
-    AccessStructureRef, DeviceId, KeyId, KeygenId, SignSessionId, SymmetricKey, WireSignTask,
+    AccessStructureRef, DeviceId, KeyId, KeygenId, RestorationId, SignSessionId, SymmetricKey,
+    WireSignTask,
 };
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -936,12 +940,20 @@ impl Service {
         restore::group(&self.0.scan_results.lock().unwrap())
     }
 
-    /// The wallets found so far by the restore scan, grouped, with whether each can be restored.
+    /// The wallets found so far by the restore scan, grouped, with whether each can be restored,
+    /// plus every saved (unfinished) restore.
+    ///
+    /// Before answering, any device the scan has heard from whose share belongs to a saved
+    /// restore is added to it and saved, so continuing a restore is just a matter of plugging in
+    /// the next device with the Restore page open.
     pub fn restore_candidates(&self) -> RestoreScanView {
+        self.absorb_into_saved_restores();
+
         let results = self.0.scan_results.lock().unwrap().clone();
         let candidates = restore::group(&results);
         let connected = self.0.device_list.lock().unwrap().ready_ids();
         let coordinator = self.0.coordinator.lock().unwrap();
+        let saved_states: Vec<RestorationState> = coordinator.restoring().collect();
         let device_names = self.0.device_names.lock().unwrap();
         let live_names: HashMap<DeviceId, String> = self
             .0
@@ -952,6 +964,12 @@ impl Service {
             .into_iter()
             .filter_map(|d| Some((d.id, d.name?)))
             .collect();
+        let name_of = |id: DeviceId| {
+            live_names
+                .get(&id)
+                .cloned()
+                .or_else(|| device_names.get(id))
+        };
 
         let views = candidates
             .iter()
@@ -961,8 +979,17 @@ impl Service {
                     .access_structure_ref
                     .map(|r| coordinator.get_access_structure(r).is_some())
                     .unwrap_or(false);
+                let in_saved_restore = !c.shares.is_empty()
+                    && c.shares.iter().all(|s| {
+                        saved_states.iter().any(|r| {
+                            r.access_structure
+                                .has_got_share_image(s.held_by, s.held_share.share_image)
+                        })
+                    });
                 let status = if already_here {
                     "already_here"
+                } else if in_saved_restore {
+                    "saved"
                 } else if c.network.is_none() {
                     "not_bitcoin"
                 } else {
@@ -987,10 +1014,7 @@ impl Service {
                         .iter()
                         .map(|s| RestoreDeviceView {
                             id: s.held_by.to_string(),
-                            name: live_names
-                                .get(&s.held_by)
-                                .cloned()
-                                .or_else(|| device_names.get(s.held_by)),
+                            name: name_of(s.held_by),
                             share_number: restore::share_number(&s.held_share),
                             connected: connected.contains(&s.held_by),
                         })
@@ -999,7 +1023,7 @@ impl Service {
             })
             .collect();
 
-        RestoreScanView {
+        let mut view = RestoreScanView {
             answered: results
                 .iter()
                 .filter(|(_, a)| a.is_some())
@@ -1011,12 +1035,131 @@ impl Service {
                 .map(|(id, _)| id.to_string())
                 .collect(),
             candidates: views,
+            saved: Vec::new(),
+        };
+        drop(device_names);
+        drop(coordinator);
+        view.saved = self.saved_restores();
+        view
+    }
+
+    /// Every saved (unfinished) restore, for the Restore page and the sidebar.
+    pub fn saved_restores(&self) -> Vec<SavedRestoreView> {
+        let connected = self.0.device_list.lock().unwrap().ready_ids();
+        let coordinator = self.0.coordinator.lock().unwrap();
+        let device_names = self.0.device_names.lock().unwrap();
+        let live_names: HashMap<DeviceId, String> = self
+            .0
+            .device_list
+            .lock()
+            .unwrap()
+            .devices()
+            .into_iter()
+            .filter_map(|d| Some((d.id, d.name?)))
+            .collect();
+        let name_of = |id: DeviceId| {
+            live_names
+                .get(&id)
+                .cloned()
+                .or_else(|| device_names.get(id))
+        };
+        coordinator
+            .restoring()
+            .map(|r| {
+                let status = r.status();
+                let count = status.share_count();
+                SavedRestoreView {
+                    restoration_id: r.restoration_id.to_string(),
+                    name: r.key_name.clone(),
+                    network: r.key_purpose.bitcoin_network().map(|n| n.to_string()),
+                    threshold: count.needed,
+                    found: count.got,
+                    incompatible: count.incompatible,
+                    restorable: r.is_restorable(),
+                    devices: status
+                        .shares
+                        .iter()
+                        .map(|s| SavedRestoreDeviceView {
+                            id: s.device_id.to_string(),
+                            name: name_of(s.device_id),
+                            share_number: u32::from(s.index),
+                            fits: match s.compatibility {
+                                ShareCompatibility::Compatible => "yes",
+                                ShareCompatibility::Incompatible => "no",
+                                ShareCompatibility::Uncertain => "unknown",
+                            }
+                            .to_string(),
+                            connected: connected.contains(&s.device_id),
+                        })
+                        .collect(),
+                }
+            })
+            .collect()
+    }
+
+    /// Adds every share the restore scan has seen to the saved restore it belongs to, if any.
+    /// Each addition is saved straight away. Shares that don't fit are left out.
+    fn absorb_into_saved_restores(&self) {
+        // Copy the results first: the device loop takes `scan_results` while holding the
+        // coordinator lock, so never hold both the other way round.
+        let results = self.0.scan_results.lock().unwrap().clone();
+        let inner = &self.0;
+        let mut coordinator = inner.coordinator.lock().unwrap();
+        let saved: Vec<RestorationState> = coordinator.restoring().collect();
+        if saved.is_empty() {
+            return;
+        }
+        let mut db = inner.db.lock().unwrap();
+        for (&held_by, shares) in &results {
+            for held_share in shares.iter().flatten() {
+                for r in &saved {
+                    if !restore::belongs_to_saved_restore(
+                        r.access_structure.access_structure_ref(),
+                        &r.key_name,
+                        r.key_purpose,
+                        held_share.access_structure_ref,
+                        held_share.key_name.as_deref(),
+                        held_share.purpose,
+                    ) {
+                        continue;
+                    }
+                    if r.access_structure
+                        .has_got_share_image(held_by, held_share.share_image)
+                    {
+                        break;
+                    }
+                    let share = RecoverShare {
+                        held_by,
+                        held_share: held_share.clone(),
+                    };
+                    let added = coordinator.staged_mutate(&mut *db, |c| {
+                        Ok(c.add_recovery_share_to_restoration(
+                            r.restoration_id,
+                            &share,
+                            DESKTOP_ENCRYPTION_KEY,
+                        ))
+                    });
+                    match added {
+                        Ok(Ok(())) => {
+                            event!(Level::INFO, device = %held_by, restore = %r.restoration_id, "device added to saved restore");
+                            break;
+                        }
+                        Ok(Err(e)) => {
+                            event!(Level::DEBUG, device = %held_by, "share not added to saved restore: {e:?}");
+                        }
+                        Err(e) => {
+                            event!(Level::ERROR, "couldn't save restore progress: {e:?}");
+                            return;
+                        }
+                    }
+                }
+            }
         }
     }
 
-    /// Rebuilds a wallet from the shares the scan found for it, using the official restoration
-    /// code. Shares that turn out not to fit are skipped. Returns the new wallet's key id.
-    pub fn restore_wallet(&self, group_id: &str) -> Result<String> {
+    /// Starts a restore from everything the scan found for one wallet, and saves it. Shares that
+    /// turn out not to fit are skipped. Returns the restore's id and how many were skipped.
+    fn begin_restoration(&self, group_id: &str) -> Result<(RestorationId, usize)> {
         let candidate = self
             .candidates()
             .into_iter()
@@ -1024,15 +1167,10 @@ impl Service {
             .ok_or(anyhow!(
                 "those devices are no longer in the scan results; scan again"
             ))?;
+        let inner = &self.0;
+        let mut coordinator = inner.coordinator.lock().unwrap();
         if let Some(r) = candidate.access_structure_ref {
-            if self
-                .0
-                .coordinator
-                .lock()
-                .unwrap()
-                .get_access_structure(r)
-                .is_some()
-            {
+            if coordinator.get_access_structure(r).is_some() {
                 return Err(anyhow!("this wallet is already in Icebox"));
             }
         }
@@ -1041,10 +1179,8 @@ impl Service {
             .split_first()
             .ok_or(anyhow!("no shares found for that wallet"))?;
 
-        let inner = &self.0;
-        let mut coordinator = inner.coordinator.lock().unwrap();
         let mut db = inner.db.lock().unwrap();
-        let restoration_id = frostsnap_core::RestorationId::new(&mut rand::thread_rng());
+        let restoration_id = RestorationId::new(&mut rand::thread_rng());
 
         // Each step is its own persisted mutation. The core functions check before they change
         // anything, so an error inside one leaves nothing half-done to be saved later.
@@ -1068,32 +1204,100 @@ impl Service {
                 event!(Level::WARN, device = %share.held_by, "share didn't fit the restoration: {e:?}");
             }
         }
+        Ok((restoration_id, skipped))
+    }
 
+    /// Saves a restore for a wallet that doesn't have enough devices here yet, so it can be
+    /// finished later, one device at a time, even after restarting Icebox (as in the official
+    /// app). Only public information is saved: which wallet each device holds a share of, and the
+    /// share's number and public image. Returns the saved restore's id.
+    pub fn save_restore(&self, group_id: &str) -> Result<String> {
+        let (restoration_id, _skipped) = self.begin_restoration(group_id)?;
+        event!(Level::INFO, restore = %restoration_id, "restore saved to continue later");
+        self.emit(Event::RestoreScanChanged);
+        Ok(restoration_id.to_string())
+    }
+
+    /// Rebuilds a wallet from the shares the scan found for it, in one go, using the official
+    /// restoration code. Returns the new wallet's key id.
+    pub fn restore_wallet(&self, group_id: &str) -> Result<String> {
+        let (restoration_id, skipped) = self.begin_restoration(group_id)?;
+        let restorable = self
+            .0
+            .coordinator
+            .lock()
+            .unwrap()
+            .get_restoration_state(restoration_id)
+            .map(|s| (s.is_restorable(), s.status().share_count()));
+        match restorable {
+            Some((true, _)) => self.finish_restoration(restoration_id),
+            other => {
+                // Not enough yet: don't leave a half-made restore behind unless the user chose
+                // to save it (that's `save_restore`).
+                self.cancel_restoration(restoration_id)?;
+                let (got, needed) = other
+                    .map(|(_, count)| (count.got.unwrap_or(0), count.needed))
+                    .unwrap_or((0, None));
+                Err(anyhow!(
+                    "not enough matching shares yet ({} of {} needed{}). Plug in more of this wallet's devices.",
+                    got,
+                    needed.map(|n| n.to_string()).unwrap_or_else(|| "?".into()),
+                    if skipped > 0 {
+                        format!(", {skipped} didn't match")
+                    } else {
+                        String::new()
+                    }
+                ))
+            }
+        }
+    }
+
+    /// Finishes a saved restore once enough of the wallet's devices have been recorded.
+    /// Returns the new wallet's key id.
+    pub fn finish_saved_restore(&self, restoration_id: &str) -> Result<String> {
+        let restoration_id: RestorationId = parse("restore id", restoration_id)?;
+        self.finish_restoration(restoration_id)
+    }
+
+    /// Throws away a saved restore. Nothing on the devices changes.
+    pub fn cancel_saved_restore(&self, restoration_id: &str) -> Result<()> {
+        let restoration_id: RestorationId = parse("restore id", restoration_id)?;
+        self.cancel_restoration(restoration_id)?;
+        event!(Level::INFO, restore = %restoration_id, "saved restore cancelled");
+        self.emit(Event::RestoreScanChanged);
+        Ok(())
+    }
+
+    fn cancel_restoration(&self, restoration_id: RestorationId) -> Result<()> {
+        let inner = &self.0;
+        let mut coordinator = inner.coordinator.lock().unwrap();
+        let mut db = inner.db.lock().unwrap();
+        coordinator.staged_mutate(&mut *db, |c| {
+            c.cancel_restoration(restoration_id);
+            Ok(())
+        })
+    }
+
+    fn finish_restoration(&self, restoration_id: RestorationId) -> Result<String> {
+        let inner = &self.0;
+        let mut coordinator = inner.coordinator.lock().unwrap();
         let state = coordinator
             .get_restoration_state(restoration_id)
-            .ok_or(anyhow!("restoration vanished"))?;
+            .ok_or(anyhow!("that restore no longer exists"))?;
         if !state.is_restorable() {
-            coordinator.staged_mutate(&mut *db, |c| {
-                c.cancel_restoration(restoration_id);
-                Ok(())
-            })?;
             let count = state.status().share_count();
             return Err(anyhow!(
-                "not enough matching shares yet ({} of {} needed{}). Plug in more of this wallet's devices.",
+                "not enough matching shares yet ({} of {} needed). Plug in more of this wallet's devices.",
                 count.got.unwrap_or(0),
                 count
                     .needed
                     .map(|n| n.to_string())
                     .unwrap_or_else(|| "?".into()),
-                if skipped > 0 {
-                    format!(", {skipped} didn't match")
-                } else {
-                    String::new()
-                }
             ));
         }
         let needs_consolidation: Vec<DeviceId> = state.needs_to_consolidate().collect();
 
+        let mut db = inner.db.lock().unwrap();
         let access_structure_ref = coordinator
             .staged_mutate(&mut *db, |c| {
                 Ok(c.finish_restoring(
@@ -1127,6 +1331,7 @@ impl Service {
 
         event!(Level::INFO, key = %access_structure_ref.key_id, "wallet restored from devices");
         self.emit_keys();
+        self.emit(Event::RestoreScanChanged);
         Ok(access_structure_ref.key_id.to_string())
     }
 
