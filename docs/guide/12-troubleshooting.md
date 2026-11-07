@@ -29,6 +29,13 @@ Each device holds one wallet. To make a new wallet, use blank devices, or
 [erase](03-devices.md#erasing-a-device) one you no longer need. Erasing a device that holds a
 wallet share can lose coins, so read the warning first.
 
+**A plugged-in device is missing from a wallet's Backups, signing or address checks.**
+The wallet was probably restored before that device was plugged in, so Icebox doesn't know about
+it yet. See [Restore → Restored with only some of the devices?](07-restore.md#after-restoring).
+
+**After showing or checking a backup, the device keeps showing a tick.**
+Icebox 0.3.1 and later send it home automatically. On 0.3.0, unplug and replug it.
+
 **Signing stops halfway or a device won't sign.**
 The device may have run out of nonces. Go to **Devices → Top up nonces on plugged-in devices**,
 then **Continue signing** under **Send → Payments in progress**.

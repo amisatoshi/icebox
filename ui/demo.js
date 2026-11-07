@@ -145,6 +145,8 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
       return { answered: scanning ? asked.map((d) => d.id) : [], waiting: [], candidates: list, saved: savedRestores.map(savedView) };
     },
     saved_restores: () => savedRestores.map(savedView),
+    clear_device_screens: () => null,
+    add_devices_to_wallet: () => 0,
     save_restore: ({ groupId }) => {
       if (groupId !== oldWallet.groupId) throw "demo mode can only save the pretend older wallet";
       const holders = devs.filter((d) => (heldBy[d.id] || []).some((h) => h.groupId === groupId));

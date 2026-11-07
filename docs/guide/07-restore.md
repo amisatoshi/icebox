@@ -87,8 +87,20 @@ the wallet, not on the devices. So a restored wallet shows each device as **unkn
 computer**. If you're not sure the backups were written down, go to [Backups](08-backups.md) and
 either **show** each device's backup and write it down, or **check** the backup you already have.
 
-Restored wallets are labelled "2 to sign" rather than "2-of-3": Icebox only sees the devices you
-plugged in, so it can't know how many exist in total.
+**Restored with only some of the devices?** Icebox only learns about the devices that answered when
+you restored. A 3-of-5 wallet restored with three devices shows "3 to sign · 3 devices", and the
+other two are missing from Backups, from **Check on a device**, and from signing. To add them:
+
+1. Plug in the missing devices. The wallet page notices them: "… are plugged in but not listed in
+   any wallet here".
+2. Open **Restore from devices**. The wallet shows **Already in Icebox**, with a note that some
+   devices hold shares Icebox doesn't list yet.
+3. Click **Add *device names* to *wallet name***. Icebox checks each share against the wallet's
+   public key before adding it (the official Frostsnap check), so a device from another wallet
+   can't be added by mistake.
+
+The label then reads, for example, "3 of 5 to sign". The second number is how many devices Icebox
+knows about; for a restored wallet it can be fewer than really exist, until you add the rest.
 
 **Spending also works one device at a time.** You never need the devices together again: start a
 payment, sign with the device in front of you, then

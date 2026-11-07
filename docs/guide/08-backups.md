@@ -24,27 +24,31 @@ Each device has a status:
 
 and some buttons (the device must be plugged in):
 
-- **Show backup on device** / **Show again:** the device displays its words. Write them down,
-  then confirm on the device.
-- **Check backup:** test the words you wrote down (below).
+- **Show backup on device** / **Show again:** the device **displays** its words, so you can write
+  them down (or write them down again). Confirm on the device when you're done.
+- **Check backup:** **tests** the words you already wrote down, without displaying them (below).
+
+The two can look alike on the device, since both go through the words one at a time, but
+**Show** tells you the words and **Check** asks you for them.
 
 ## Check a backup
 
 A backup you've never tested might have a mistake in it. **Check backup** lets you find out
 safely:
 
-1. Plug in the device and click **Check backup**.
-2. **Enter your written-down words on the device itself.** Icebox shows "enter your words on the
-   device".
-3. The device tells you whether they match, and Icebox shows the result:
-   "backup words match", or "those words don't match this device's backup".
+1. Have your written-down words in front of you, plug in the device and click **Check backup**.
+2. **Answer on the device.** For the share number and then each of the 25 words, the device
+   offers **three choices**; tap the one on your paper. A wrong pick is shown in red. (Devices
+   with firmware older than 0.3 ask you to type the words in instead.)
+3. When every answer is right, the device shows a tick and Icebox shows "backup words match".
 
-![Checking a backup: the words are entered on the device](img/17-backup-check.png)
+![Checking a backup on the device](img/17-backup-check.png)
 
 A backup that matches is marked **backed up**. If it doesn't match, use **Show again** and
 write the words down afresh.
 
-Click **Cancel**, or leave the tab, to stop a check; the device goes back to its home screen.
+Click **Cancel**, or leave the tab, to stop a check. After a backup is shown or checked, Icebox
+sends the device back to its home screen by itself after a moment.
 
 We suggest checking each backup once after creating a wallet, and again every year or so.
 

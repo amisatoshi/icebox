@@ -168,6 +168,10 @@ pub struct RestoreCandidateView {
     /// (every share found is already part of a saved restore, which is shown instead).
     pub status: String,
     pub devices: Vec<RestoreDeviceView>,
+    /// For a wallet already in Icebox: devices found holding a share of it that Icebox doesn't
+    /// list yet (a restore only learns about the devices that answered at the time). They can
+    /// be added with `add_devices_to_wallet`.
+    pub not_in_wallet: Vec<String>,
 }
 
 /// A restore that was started with fewer devices than it needs, saved so it can be finished

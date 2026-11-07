@@ -97,6 +97,14 @@ function fmtBtc(n) {
   const sign = n < 0 ? "−" : "";
   return sign + (Math.abs(n) / 1e8).toFixed(8);
 }
+const later = (ms, fn) => setTimeout(fn, ms);
+
+/** "red", "red and blue", "red, blue and green" */
+function listJoin(names) {
+  if (names.length <= 1) return names.join("");
+  return names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+}
+
 function shortId(id) {
   return id ? id.slice(0, 8) + "…" : "";
 }
@@ -108,10 +116,18 @@ function networkLabel(n) {
   return { bitcoin: "Mainnet", signet: "Signet", testnet: "Testnet", regtest: "Regtest" }[n] || n || "—";
 }
 
-/** "2 to sign": how many devices must approve. Shown instead of "2-of-3" because a wallet
- *  restored from some of its devices doesn't know how many devices exist in total. */
+/** "3 of 5 to sign": how many devices must approve, out of the devices Icebox knows about.
+ *  A restored wallet only knows the devices that answered when it was restored (more can be
+ *  added from Restore from devices), so the second number is "known here", not a total. */
 function signLabel(k) {
-  return `${k.threshold} to sign`;
+  const n = k.devices.length;
+  return n > k.threshold ? `${k.threshold} of ${n} to sign` : `${k.threshold} to sign · ${n} device${n === 1 ? "" : "s"}`;
+}
+
+/** Plugged-in devices that hold a wallet (they have a name) but aren't listed in any wallet here. */
+function unlistedDevices() {
+  const listed = new Set(state.keys.flatMap((k) => k.devices.map((d) => d.id)));
+  return state.devices.filter((d) => d.ready && d.name && !listed.has(d.id));
 }
 
 function deviceName(id) {
@@ -440,6 +456,22 @@ function renderRestore() {
     const actions = h("div", { class: "row" });
     if (c.status === "already_here") {
       const key = state.keys.find((k) => c.group_id.startsWith(k.key_id));
+      const missing = c.not_in_wallet || [];
+      if (missing.length) {
+        const names = missing.map((id) => (c.devices.find((d) => d.id === id) || {}).name || "Device " + shortId(id));
+        card.append(h("div", { class: "notice" },
+          `${listJoin(names)} ${missing.length === 1 ? "holds a share" : "hold shares"} of this wallet that Icebox doesn't list yet. When a wallet is restored, Icebox only learns about the devices that answered at the time. Add ${missing.length === 1 ? "it" : "them"} so ${missing.length === 1 ? "it" : "they"} can sign, show ${missing.length === 1 ? "its" : "their"} address and back up here.`));
+        actions.append(h("button", {
+          class: "btn primary", disabled: r.busy === c.group_id,
+          onclick: async () => {
+            r.busy = c.group_id; render();
+            const added = await call("add_devices_to_wallet", { groupId: c.group_id });
+            r.busy = null;
+            if (added !== undefined) toast(`${added} device${added === 1 ? "" : "s"} added to ${c.name}`);
+            await refreshRestore();
+          },
+        }, r.busy === c.group_id ? "Adding…" : `Add ${listJoin(names)} to ${c.name}`));
+      }
       if (key) actions.append(h("button", { class: "btn", onclick: () => openWallet(key.key_id) }, "Open wallet"));
     } else if (c.status === "ready" || c.status === "unknown_threshold") {
       if (c.network === "bitcoin") card.append(h("div", { class: "notice warn", text: "This is a mainnet wallet holding real bitcoin. Icebox is new and unaudited: restoring only reads the devices, but be careful sending from it." }));
@@ -928,13 +960,13 @@ function renderBackupList(key) {
       const checking = c && c.device_id === d.id && c.keyId === key.key_id && !c.done && isConnected(d.id);
       const check = h("button", {
         class: "btn small ghost",
-        title: "Type the words you wrote down on the device. It tells you if they match. The words never reach this computer.",
+        title: "Tests your written-down words without showing them: the device asks for each word, giving three choices, and you pick the one on your paper. The words never reach this computer.",
         onclick: () => { state.checkBackup = { keyId: key.key_id, device_id: d.id, done: false }; call("check_backup", { keyId: key.key_id, deviceId: d.id }).then((r) => { if (r === undefined) { state.checkBackup = null; render(); } }); render(); },
       }, "Check backup");
       let action;
       if (showing) action = h("span", { class: "pill warn", text: "showing on device — confirm there when written down" });
       else if (checking) action = h("div", { class: "row" },
-        h("span", { class: "pill warn", text: "enter your words on the device" }),
+        h("span", { class: "pill warn", text: "on the device: pick each word from your paper" }),
         h("button", { class: "btn small ghost", onclick: () => { call("cancel_protocol"); state.checkBackup = null; render(); } }, "Cancel"));
       else if (!isConnected(d.id)) action = d.backup_done === true ? status : h("div", { class: "row" }, status, h("span", { class: "pill", text: "plug in to show" }));
       else if (d.backup_done === true) action = h("div", { class: "row" }, status, check, show("Show again", "btn small ghost"));
@@ -1010,6 +1042,15 @@ function renderWallet() {
       ),
     ),
   );
+
+  const unlisted = state.demo ? [] : unlistedDevices();
+  if (unlisted.length) {
+    page.append(h("div", { class: "notice" },
+      `${listJoin(unlisted.map((d) => d.name))} ${unlisted.length === 1 ? "is" : "are"} plugged in but not listed in any wallet here. If ${unlisted.length === 1 ? "it belongs" : "they belong"} to this wallet (for example one restored from some of its devices), `,
+      h("button", { class: "link", onclick: openRestore }, `add ${unlisted.length === 1 ? "it" : "them"} from Restore from devices`),
+      ".",
+    ));
+  }
 
   if (key.devices.some((d) => d.backup_done === false)) {
     page.append(h("div", { class: "notice warn" },
@@ -1177,7 +1218,7 @@ function renderAddressList(key, w) {
       onclick: () => showAddress(key, w, x.index),
     },
       h("span", { class: "muted mono", text: `#${x.index}` }),
-      h("span", { class: "mono small addr-short" + (x.used ? " struck" : ""), text: x.address.slice(0, 14) + "…" + x.address.slice(-8) }),
+      h("span", { class: "mono small addr-short" + (x.used ? " struck" : ""), text: x.address.slice(0, 14) + "…" + x.address.slice(-8), title: x.address }),
       x.used ? h("span", { class: "pill bad", text: "used" })
         : x.shared ? h("span", { class: "pill", text: "handed out" })
         : h("span", { class: "pill ok", text: "fresh" }),
@@ -1590,6 +1631,8 @@ function onEvent(e) {
       if (e.confirmed) {
         const keyId = (state.wizard && state.wizard.step === "backup" && state.wizard.keyId) || (state.wallet && state.wallet.keyId);
         if (keyId) call("mark_backup_complete", { keyId, deviceId: e.device_id }).then(() => toast("Backup recorded"));
+        // The device keeps showing its tick until told to stop: send it home after a moment.
+        later(1500, () => { if (state.backup && state.backup.device_id === e.device_id) { state.backup = null; call("clear_device_screens"); render(); } });
       }
       break;
     }
@@ -1605,6 +1648,7 @@ function onEvent(e) {
       } else {
         toast(`${deviceName(e.device_id)}: those words don't match this device's backup`, true);
       }
+      later(2500, () => call("clear_device_screens"));
       break;
     }
     case "wallet_changed":

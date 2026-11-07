@@ -6,6 +6,25 @@ All notable changes to Icebox are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-08
+
+### Fixed
+- **A restored wallet missed devices that weren't plugged in at the time.** Restoring a 3-of-5
+  wallet with three devices left the other two out of Backups, address checks and signing,
+  with no way to add them. The Restore page now spots devices holding shares of a wallet that's
+  already in Icebox and offers **Add … to *wallet***, using the official `recover_share` (each
+  share is checked against the wallet's public key first). The wallet page points out plugged-in
+  devices that aren't listed in any wallet.
+- **Devices kept showing a tick after a backup was shown or checked.** Icebox now sends the device
+  back to its home screen a moment after the backup is confirmed or checked.
+
+### Changed
+- Wallets show how many devices Icebox knows as well as how many must sign: "3 of 5 to sign"
+  (previously just "3 to sign").
+- **Check backup** is described as what it is on current firmware: the device asks for each word
+  with three choices and you pick the one on your paper (it doesn't display the words).
+- The receive-address list shows each full address on hover.
+
 ## [0.3.0] - 2026-11-05
 
 ### Added
@@ -103,7 +122,8 @@ All notable changes to Icebox are recorded here. The format follows
   history over Electrum, receive with on-device address check, send with per-device signing and
   broadcast, watch-only descriptor, Electrum server settings.
 
-[Unreleased]: https://github.com/amisatoshi/icebox/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/amisatoshi/icebox/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/amisatoshi/icebox/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/amisatoshi/icebox/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/amisatoshi/icebox/releases/tag/v0.2.0
 [0.1.0]: https://github.com/amisatoshi/icebox/releases/tag/v0.1.0
