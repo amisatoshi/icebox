@@ -168,11 +168,11 @@ Mac app on a Mac, Linux packages on Linux. Output goes to `target/release/bundle
 
 | System  | File | Notes |
 |---------|------|-------|
-| Windows | `msi/Icebox_0.3.0_x64_en-US.msi` | the one file to send; installs to Start menu with an uninstaller |
-| Linux   | `deb/Icebox_0.3.0_amd64.deb` | Debian/Ubuntu; also installs the udev rule for the devices |
-| Linux   | `rpm/Icebox-0.3.0-1.x86_64.rpm` | Fedora etc.; also installs the udev rule |
-| Linux   | `appimage/Icebox_0.3.0_amd64.AppImage` | any distro; install `linux/70-frostsnap.rules` by hand |
-| macOS   | `dmg/Icebox_0.3.0_aarch64.dmg` | open it and drag Icebox to Applications |
+| Windows | `msi/Icebox_0.3.1_x64_en-US.msi` | the one file to send; installs to Start menu with an uninstaller |
+| Linux   | `deb/Icebox_0.3.1_amd64.deb` | Debian/Ubuntu; also installs the udev rule for the devices |
+| Linux   | `rpm/Icebox-0.3.1-1.x86_64.rpm` | Fedora etc.; also installs the udev rule |
+| Linux   | `appimage/Icebox_0.3.1_amd64.AppImage` | any distro; install `linux/70-frostsnap.rules` by hand |
+| macOS   | `dmg/Icebox_0.3.1_aarch64.dmg` | open it and drag Icebox to Applications |
 
 For one Mac app that runs on both Apple Silicon and Intel, build with
 `rustup target add aarch64-apple-darwin x86_64-apple-darwin` and

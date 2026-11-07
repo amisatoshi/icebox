@@ -84,7 +84,7 @@ time from the [Backups tab](08-backups.md).
 
 ![The wallet's History page](img/08-wallet-history.png)
 
-The sidebar lists it as "2 to sign · Signet". The top shows the balance, the network, and the
+The sidebar lists it as "2 of 3 to sign · Signet": two devices must sign, out of three. The top shows the balance, the network, and the
 connection to the Electrum server. The tabs are **History**, **Receive**, **Send**, **Backups**
 and **Details**.
 

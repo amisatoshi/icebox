@@ -45,7 +45,9 @@ Under the address, **All receive addresses → Show** lists every address so far
 | **handed out** | Copied, checked on a device, or skipped with Get another. Nobody may have paid it yet. |
 | **used** | Has received coins (shown crossed out). Don't give it out again. |
 
-Click any address to show it again, for example to re-check it on a device.
+The list shows the start and end of each address to keep it compact; hover over one to see it
+in full, or click it to show it again (full, with its QR code), for example to re-check it on a
+device.
 
 ## When the coins arrive
 

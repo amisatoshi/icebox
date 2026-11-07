@@ -975,10 +975,21 @@ impl Service {
             .iter()
             .map(|c| {
                 let found = c.distinct_shares();
-                let already_here = c
+                let existing = c
                     .access_structure_ref
-                    .map(|r| coordinator.get_access_structure(r).is_some())
-                    .unwrap_or(false);
+                    .and_then(|r| coordinator.get_access_structure(r));
+                let already_here = existing.is_some();
+                let not_in_wallet: Vec<String> = match &existing {
+                    Some(access_structure) => {
+                        let known = access_structure.device_to_share_indicies();
+                        c.shares
+                            .iter()
+                            .filter(|s| !known.contains_key(&s.held_by))
+                            .map(|s| s.held_by.to_string())
+                            .collect()
+                    }
+                    None => Vec::new(),
+                };
                 let in_saved_restore = !c.shares.is_empty()
                     && c.shares.iter().all(|s| {
                         saved_states.iter().any(|r| {
@@ -1019,6 +1030,7 @@ impl Service {
                             connected: connected.contains(&s.held_by),
                         })
                         .collect(),
+                    not_in_wallet,
                 }
             })
             .collect();
@@ -1041,6 +1053,69 @@ impl Service {
         drop(coordinator);
         view.saved = self.saved_restores();
         view
+    }
+
+    /// Adds devices the restore scan found holding shares of a wallet that's already in Icebox,
+    /// but that Icebox doesn't list yet. A restore only learns about the devices that answered
+    /// at the time, so a 3-of-5 wallet restored with three devices doesn't know the other two
+    /// until they're added here. Uses the official `recover_share`, which checks each share
+    /// against the wallet's public key before adding it. Returns how many were added.
+    pub fn add_devices_to_wallet(&self, group_id: &str) -> Result<usize> {
+        let candidate = self
+            .candidates()
+            .into_iter()
+            .find(|c| c.group_id == group_id)
+            .ok_or(anyhow!(
+                "those devices are no longer in the scan results; scan again"
+            ))?;
+        let access_structure_ref = candidate.access_structure_ref.ok_or(anyhow!(
+            "those devices don't say which wallet they belong to"
+        ))?;
+        let inner = &self.0;
+        let mut coordinator = inner.coordinator.lock().unwrap();
+        let known = coordinator
+            .get_access_structure(access_structure_ref)
+            .ok_or(anyhow!("this wallet isn't in Icebox; restore it instead"))?
+            .device_to_share_indicies();
+        let mut db = inner.db.lock().unwrap();
+        let mut added = 0;
+        let mut refused = Vec::new();
+        for share in candidate
+            .shares
+            .iter()
+            .filter(|s| !known.contains_key(&s.held_by))
+        {
+            let result = coordinator.staged_mutate(&mut *db, |c| {
+                Ok(c.recover_share(access_structure_ref, share, DESKTOP_ENCRYPTION_KEY))
+            })?;
+            match result {
+                Ok(()) => {
+                    added += 1;
+                    event!(Level::INFO, device = %share.held_by, key = %access_structure_ref.key_id, "device added to wallet");
+                }
+                Err(e) => {
+                    event!(Level::WARN, device = %share.held_by, "device's share doesn't fit the wallet: {:?}", e.kind);
+                    refused.push(share.held_by);
+                }
+            }
+        }
+        drop(db);
+        drop(coordinator);
+        self.emit_keys();
+        self.emit(Event::RestoreScanChanged);
+        if added == 0 && !refused.is_empty() {
+            return Err(anyhow!(
+                "those devices' shares don't fit this wallet, so they weren't added"
+            ));
+        }
+        Ok(added)
+    }
+
+    /// Sends every device back to its home screen, e.g. after a backup has been shown or
+    /// checked (the device otherwise keeps showing its tick until it's told to stop).
+    pub fn clear_device_screens(&self) {
+        self.cancel_protocol();
+        self.0.usb_sender.send_cancel_all();
     }
 
     /// Every saved (unfinished) restore, for the Restore page and the sidebar.

@@ -23,7 +23,7 @@ damaged or swapped.
 **Windows** (PowerShell, in your Downloads folder):
 
 ```powershell
-Get-FileHash .\Icebox_0.3.0_x64_en-US.msi -Algorithm SHA256
+Get-FileHash .\Icebox_0.3.1_x64_en-US.msi -Algorithm SHA256
 ```
 
 **macOS / Linux** (Terminal, in the folder with both files):
@@ -38,7 +38,7 @@ build provenance. If you have the [GitHub CLI](https://cli.github.com), this pro
 built by this repository's release workflow:
 
 ```bash
-gh attestation verify Icebox_0.3.0_x64_en-US.msi --repo amisatoshi/icebox
+gh attestation verify Icebox_0.3.1_x64_en-US.msi --repo amisatoshi/icebox
 ```
 
 ## Running unsigned builds
@@ -96,10 +96,10 @@ you either, which makes [checking the download](#check-the-download-recommended)
 protection.
 
 - **`.deb` / `.rpm`:** install with your software centre, or
-  `sudo apt install ./Icebox_0.3.0_amd64.deb` (Debian/Ubuntu) or
-  `sudo dnf install ./Icebox-0.3.0-1.x86_64.rpm` (Fedora).
+  `sudo apt install ./Icebox_0.3.1_amd64.deb` (Debian/Ubuntu) or
+  `sudo dnf install ./Icebox-0.3.1-1.x86_64.rpm` (Fedora).
 - **AppImage:** make it executable (right-click → **Properties → Allow executing file as
-  program**, or `chmod +x Icebox_0.3.0_amd64.AppImage`), then run it.
+  program**, or `chmod +x Icebox_0.3.1_amd64.AppImage`), then run it.
 - **AppImage on Ubuntu 22.04 or later:** AppImages need FUSE 2, which Ubuntu no longer installs.
   If the AppImage does nothing when opened, install it:
 

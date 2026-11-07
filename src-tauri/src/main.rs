@@ -207,6 +207,19 @@ fn restore_wallet(state: State<'_, AppState>, group_id: String) -> CmdResult<Str
 }
 
 #[tauri::command(async)]
+fn add_devices_to_wallet(state: State<'_, AppState>, group_id: String) -> CmdResult<usize> {
+    service(&state)?
+        .add_devices_to_wallet(&group_id)
+        .map_err(err)
+}
+
+#[tauri::command(async)]
+fn clear_device_screens(state: State<'_, AppState>) -> CmdResult<()> {
+    service(&state)?.clear_device_screens();
+    Ok(())
+}
+
+#[tauri::command(async)]
 fn save_restore(state: State<'_, AppState>, group_id: String) -> CmdResult<String> {
     service(&state)?.save_restore(&group_id).map_err(err)
 }
@@ -442,6 +455,8 @@ fn main() {
             start_restore_scan,
             restore_candidates,
             restore_wallet,
+            add_devices_to_wallet,
+            clear_device_screens,
             save_restore,
             finish_saved_restore,
             cancel_saved_restore,
