@@ -1027,13 +1027,13 @@ impl Service {
         }
         {
             let mut watch_only = self.0.watch_only.lock().unwrap();
-            if !watch_only.contains_key(&key_id) {
+            if let std::collections::hash_map::Entry::Vacant(slot) = watch_only.entry(key_id) {
                 self.0.db.lock().unwrap().execute(
                     "INSERT OR REPLACE INTO icebox_watch_only (key_id, code) VALUES (?1, ?2)",
                     rusqlite::params![key_id.to_string(), w.encode()],
                 )?;
                 event!(Level::INFO, key = %key_id, network = %w.network, "watch-only wallet added");
-                watch_only.insert(key_id, w);
+                slot.insert(w);
             }
         }
         self.emit_watch_only();
