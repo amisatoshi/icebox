@@ -12,16 +12,22 @@ Open the wallet and click the **Send** tab (or **Wallet → Send**, **Ctrl+S** /
 ![A new payment with fee suggestions](img/11-send-form.png)
 
 - **Pay to:** the address, or a `bitcoin:` payment link (Icebox keeps just the address).
-  Mainnet addresses start `bc1…`; Signet and Testnet ones start `tb1…`.
+  Mainnet addresses start `bc1…`; Signet and Testnet ones start `tb1…`. Or click **📷 Scan** to
+  read the payee's QR code with your webcam; if it includes an amount, that's filled in too.
 - **Amount (sats):** 1 bitcoin = 100,000,000 sats. Or tick **Send everything** to empty the
-  wallet (the fee comes out of the amount).
+  wallet (the fee comes out of the amount). The minimum for the address you entered is shown
+  underneath.
 - **Fee rate (sat/vB):** click **Suggest fee rates** for current estimates (next block, ~30 min,
   ~1 hour, ~4 hours) and pick one. Higher pays more and confirms sooner.
 
 Click **Review payment**.
 
-> Very small amounts (under about 330 sats, called "dust") can't be sent. Icebox stops you
-> before signing.
+> Very small amounts ("dust": under 330 sats for most addresses, 546 for older ones starting
+> `1`) can't be sent. Icebox shows the minimum and stops you before signing.
+
+**About the webcam:** the camera is only on while the scan window is open, and images are read on
+your computer and never stored or sent anywhere. macOS asks permission the first time. On Linux,
+Icebox can't use the camera yet: paste the address instead.
 
 ## 2. Review and choose the signers
 
@@ -83,5 +89,8 @@ Any other error is shown as "Broadcast failed: …". Check your connection in
 
 Speeding up a stuck payment (RBF/CPFP), choosing which coins to spend, and PSBT import/export
 are on the [roadmap](../../ROADMAP.md). For now, use the official Frostsnap app for those.
+
+A payment that's been waiting for over two weeks is marked **may never confirm** in History: the
+network has probably dropped it, usually because its fee was too low.
 
 [← Receive](05-receive.md) · [Contents](README.md) · Next: [Restore a wallet →](07-restore.md)

@@ -53,6 +53,24 @@ fn app_info(app: tauri::AppHandle) -> CmdResult<AppInfo> {
 
 /// Opens a transaction on mempool.space in the user's browser. The page can't open arbitrary
 /// URLs: Icebox builds the link itself from the network and a checked txid.
+/// Opens an Icebox release page (from the About page's update check) in the browser. The page
+/// passes only a tag; the URL is built and checked here.
+#[tauri::command(async)]
+fn open_release(app: tauri::AppHandle, tag: String) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let url = icebox_core::release_url(&tag)?;
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| format!("couldn't open the browser: {e}"))
+}
+
+/// Reads a QR code from one camera frame (base64 greyscale pixels). Decoding is done here, in
+/// Rust; the frame isn't stored or sent anywhere.
+#[tauri::command(async)]
+fn decode_qr(width: usize, height: usize, data: String) -> CmdResult<Option<String>> {
+    icebox_core::decode_qr_frame(width, height, &data)
+}
+
 #[tauri::command(async)]
 fn open_tx(app: tauri::AppHandle, network: String, txid: String) -> CmdResult<()> {
     use tauri_plugin_opener::OpenerExt;
@@ -211,6 +229,26 @@ fn add_devices_to_wallet(state: State<'_, AppState>, group_id: String) -> CmdRes
     service(&state)?
         .add_devices_to_wallet(&group_id)
         .map_err(err)
+}
+
+#[tauri::command(async)]
+fn watch_only_wallets(state: State<'_, AppState>) -> CmdResult<Vec<WatchOnlyView>> {
+    Ok(service(&state)?.watch_only_wallets())
+}
+
+#[tauri::command(async)]
+fn watch_only_code(state: State<'_, AppState>, key_id: String) -> CmdResult<WatchCodeView> {
+    service(&state)?.watch_only_code(&key_id).map_err(err)
+}
+
+#[tauri::command(async)]
+fn add_watch_only(state: State<'_, AppState>, code: String) -> CmdResult<String> {
+    service(&state)?.add_watch_only(&code).map_err(err)
+}
+
+#[tauri::command(async)]
+fn remove_watch_only(state: State<'_, AppState>, key_id: String) -> CmdResult<()> {
+    service(&state)?.remove_watch_only(&key_id).map_err(err)
 }
 
 #[tauri::command(async)]
@@ -457,6 +495,12 @@ fn main() {
             restore_wallet,
             add_devices_to_wallet,
             clear_device_screens,
+            decode_qr,
+            open_release,
+            watch_only_wallets,
+            watch_only_code,
+            add_watch_only,
+            remove_watch_only,
             save_restore,
             finish_saved_restore,
             cancel_saved_restore,

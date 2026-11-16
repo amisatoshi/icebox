@@ -51,6 +51,7 @@ To use a different folder, set the `ICEBOX_DATA_DIR` environment variable before
 
 **Help → About Icebox** shows the version, the Frostsnap code it's built on, the device firmware
 it expects, and the data folder. Include these when you [report a problem](https://github.com/amisatoshi/icebox/issues).
+It also has a **Check for updates** button; see [Updating](11-updating.md#finding-out-about-new-versions).
 
 ![The About page](img/24-about.png)
 

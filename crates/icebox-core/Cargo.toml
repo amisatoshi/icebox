@@ -1,6 +1,6 @@
 [package]
 name = "icebox-core"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 license = "MIT"
 # Not published to crates.io (so path and git dependencies are fine for cargo-deny).
@@ -18,3 +18,4 @@ rusqlite = { workspace = true }
 rand = "0.8"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 base64 = "0.22"
+rqrr = { version = "0.10", default-features = false }

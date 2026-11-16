@@ -47,6 +47,41 @@ Two tips:
 - On mainnet, anyone with this key can see every payment to the wallet, so only paste it into a
   BTCPay server you run or trust.
 
+## Watch this wallet on another computer
+
+A **watch-only wallet** shows a wallet's balance, history and receive addresses on a computer that
+has none of its devices: for a treasurer, a shop's till, or your own second laptop. It can't spend.
+*(New in Icebox 0.4.)*
+
+**On the computer that has the wallet:** open it, go to **Details → Show watch-only code**, and
+copy the code (it starts `icebox-watch1:`) or let the other computer scan the QR code.
+
+![The watch-only code on the Details tab](img/27-watch-code.png)
+
+**On the other computer:** click **Add watch-only wallet** in the sidebar, then paste the code,
+**Scan QR code** with the webcam, or **Open a file…** containing it. Click **Add wallet**.
+
+![Adding a watch-only wallet](img/25-watch-add.png)
+
+The wallet appears in the sidebar with an 👁 and "watch-only". It has **History**, **Receive** and
+**Details** tabs, but no Send or Backups:
+
+![A watch-only wallet](img/26-watch-wallet.png)
+
+Good to know:
+
+- **Receive addresses can't be checked on a device** from a watch-only computer, because it has
+  no devices. Before giving out an address for a large payment, check it on one of the wallet's
+  devices from the computer that has them; it's the same address there.
+- **Keep the code private.** Like the descriptor, it can't spend, but it reveals every address and
+  payment of the wallet.
+- **Only Icebox codes work.** Icebox can't watch a wallet from another app's descriptor (such as
+  Sparrow's) yet, because Frostsnap's wallet engine needs a key the descriptor doesn't contain.
+- If you later [restore the wallet from its devices](07-restore.md) on the same computer, the
+  full wallet replaces the watch-only one in the sidebar.
+- **Stop watching** (Details, at the bottom) forgets the watch-only wallet on that computer.
+  Nothing else changes.
+
 ## Remove a wallet from Icebox
 
 **Remove wallet…** at the bottom of Details makes **this computer forget the wallet**. It's like

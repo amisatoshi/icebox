@@ -14,6 +14,7 @@
 use crate::device_list::DeviceList;
 use crate::events::*;
 use crate::restore::{self, ScanHeldShares, ScanResults};
+use crate::watch_only::WatchCode;
 use anyhow::{anyhow, Context as _, Result};
 use frostsnap_coordinator::backup_run::BackupState;
 use frostsnap_coordinator::bdk_chain::bitcoin::{self, Address, Network};
@@ -48,8 +49,8 @@ use frostsnap_core::coordinator::{BeginKeygen, CoordFrostKey, CoordinatorSend, F
 use frostsnap_core::device::KeyPurpose;
 use frostsnap_core::tweak::{BitcoinAccount, NormalIndex};
 use frostsnap_core::{
-    AccessStructureRef, DeviceId, KeyId, KeygenId, RestorationId, SignSessionId, SymmetricKey,
-    WireSignTask,
+    AccessStructureRef, DeviceId, KeyId, KeygenId, MasterAppkey, RestorationId, SignSessionId,
+    SymmetricKey, WireSignTask,
 };
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -109,6 +110,30 @@ struct Inner {
     pending_send: Mutex<Option<PendingSend>>,
     /// What devices said they hold, from the restore scan.
     scan_results: ScanResults,
+    /// Wallets added from a watch-only code, by key id (kept in the `icebox_watch_only` table).
+    watch_only: Mutex<HashMap<KeyId, WatchCode>>,
+}
+
+/// The watch-only wallets saved in the database. The table belongs to Icebox (the official app
+/// ignores it); each row is just the code the wallet was added from.
+fn load_watch_only(db: &rusqlite::Connection) -> Result<HashMap<KeyId, WatchCode>> {
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS icebox_watch_only (key_id TEXT PRIMARY KEY, code TEXT NOT NULL)",
+    )?;
+    let mut stmt = db.prepare("SELECT code FROM icebox_watch_only")?;
+    let codes = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<std::result::Result<Vec<String>, _>>()?;
+    let mut wallets = HashMap::new();
+    for code in codes {
+        match WatchCode::decode(&code) {
+            Ok(w) => {
+                wallets.insert(w.master_appkey.key_id(), w);
+            }
+            Err(e) => event!(Level::WARN, "ignoring a saved watch-only wallet: {e}"),
+        }
+    }
+    Ok(wallets)
 }
 
 // ---------- id helpers: every id crosses to the UI as a hex string ----------
@@ -152,6 +177,8 @@ impl Service {
         let db = rusqlite::Connection::open(&db_file)
             .with_context(|| format!("opening database {}", db_file.display()))?;
         let db = Arc::new(Mutex::new(db));
+
+        let watch_only = load_watch_only(&db.lock().unwrap())?;
 
         let (coordinator, device_names, backup_state, settings) = {
             let mut db_ = db.lock().unwrap();
@@ -235,6 +262,7 @@ impl Service {
             pending_names: Default::default(),
             pending_send: Default::default(),
             scan_results: Default::default(),
+            watch_only: Mutex::new(watch_only),
         }));
 
         service.spawn_device_loop(usb_manager)?;
@@ -743,6 +771,9 @@ impl Service {
     fn emit_keys(&self) {
         let keys = self.keys();
         self.emit(Event::Keys { keys });
+        // a watch-only wallet is hidden while its devices' wallet is here, so this list can
+        // change whenever the keys do
+        self.emit_watch_only();
     }
 
     /// Asks a device to show its backup (share) on its own screen. The backup never leaves the
@@ -893,11 +924,10 @@ impl Service {
 
     /// The wallet's output descriptor, for setting up a watch-only wallet elsewhere.
     pub fn descriptor(&self, key_id: &str) -> Result<String> {
-        let key = self.frost_key(parse_key(key_id)?)?;
-        let network = key_network(&key)?;
+        let (_, master_appkey, network, _) = self.wallet_target(key_id)?;
         Ok(
             frostsnap_coordinator::bitcoin::multi_x_descriptor_for_account(
-                key.complete_key.master_appkey,
+                master_appkey,
                 BitcoinAccount::default(),
                 network.into(),
             )
@@ -916,6 +946,114 @@ impl Service {
     /// easily from a screen.
     pub fn descriptor_qr(&self, key_id: &str) -> Result<String> {
         qr_svg(&self.descriptor(key_id)?, qrcode::EcLevel::L)
+    }
+
+    // =====================================================================================
+    // Watch-only wallets
+    // =====================================================================================
+
+    /// Watch-only wallets, minus any whose devices' wallet is now in Icebox too (that one shows
+    /// everything the watch-only one would, and more).
+    pub fn watch_only_wallets(&self) -> Vec<WatchOnlyView> {
+        let device_wallets: HashSet<KeyId> = self
+            .0
+            .coordinator
+            .lock()
+            .unwrap()
+            .iter_keys()
+            .map(|k| k.key_id)
+            .collect();
+        let mut wallets: Vec<WatchOnlyView> = self
+            .0
+            .watch_only
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(id, _)| !device_wallets.contains(id))
+            .map(|(id, w)| WatchOnlyView {
+                key_id: id.to_string(),
+                name: w.name.clone(),
+                network: w.network.to_string(),
+            })
+            .collect();
+        wallets.sort_by(|a, b| a.name.cmp(&b.name));
+        wallets
+    }
+
+    fn emit_watch_only(&self) {
+        let wallets = self.watch_only_wallets();
+        self.emit(Event::WatchOnly { wallets });
+    }
+
+    /// A wallet's watch-only code, to add it to another Icebox that has no devices. It can't
+    /// spend, but it reveals every address and payment of the wallet.
+    pub fn watch_only_code(&self, key_id: &str) -> Result<WatchCodeView> {
+        let (key_id, master_appkey, network, _) = self.wallet_target(key_id)?;
+        let name = match self.frost_key(key_id) {
+            Ok(key) => key.key_name,
+            Err(_) => self
+                .0
+                .watch_only
+                .lock()
+                .unwrap()
+                .get(&key_id)
+                .map(|w| w.name.clone())
+                .unwrap_or_default(),
+        };
+        let code = WatchCode {
+            name,
+            network,
+            master_appkey,
+        }
+        .encode();
+        Ok(WatchCodeView {
+            qr_svg: qr_svg(&code, qrcode::EcLevel::M)?,
+            code,
+        })
+    }
+
+    /// Adds a wallet from a watch-only code. Returns its id; adding one that's already here just
+    /// returns the existing one.
+    pub fn add_watch_only(&self, code: &str) -> Result<String> {
+        let w = WatchCode::decode(code).map_err(|e| anyhow!(e))?;
+        if !SUPPORTED_NETWORKS.contains(&w.network) {
+            return Err(anyhow!("network {} is not supported", w.network));
+        }
+        let key_id = w.master_appkey.key_id();
+        if self.frost_key(key_id).is_ok() {
+            return Err(anyhow!(
+                "this wallet is already in Icebox with its devices, so there's no need to watch it"
+            ));
+        }
+        {
+            let mut watch_only = self.0.watch_only.lock().unwrap();
+            if !watch_only.contains_key(&key_id) {
+                self.0.db.lock().unwrap().execute(
+                    "INSERT OR REPLACE INTO icebox_watch_only (key_id, code) VALUES (?1, ?2)",
+                    rusqlite::params![key_id.to_string(), w.encode()],
+                )?;
+                event!(Level::INFO, key = %key_id, network = %w.network, "watch-only wallet added");
+                watch_only.insert(key_id, w);
+            }
+        }
+        self.emit_watch_only();
+        Ok(key_id.to_string())
+    }
+
+    /// Forgets a watch-only wallet on this computer.
+    pub fn remove_watch_only(&self, key_id: &str) -> Result<()> {
+        let key_id = parse_key(key_id)?;
+        let removed = self.0.watch_only.lock().unwrap().remove(&key_id);
+        if removed.is_none() {
+            return Err(anyhow!("that isn't a watch-only wallet"));
+        }
+        self.0.db.lock().unwrap().execute(
+            "DELETE FROM icebox_watch_only WHERE key_id = ?1",
+            rusqlite::params![key_id.to_string()],
+        )?;
+        event!(Level::INFO, key = %key_id, "watch-only wallet removed");
+        self.emit_watch_only();
+        Ok(())
     }
 
     // =====================================================================================
@@ -1414,6 +1552,7 @@ impl Service {
     // Wallet: balance, history, receiving
     // =====================================================================================
 
+    /// The wallet engine for a wallet with devices (sending needs the devices).
     fn wallet_for(&self, key: &CoordFrostKey) -> Result<(Network, Arc<Mutex<CoordSuperWallet>>)> {
         let network = key_network(key)?;
         let wallet = self
@@ -1425,6 +1564,31 @@ impl Service {
         Ok((network, wallet))
     }
 
+    /// The wallet engine, master app key and network for a wallet id: a wallet with devices, or
+    /// a watch-only one. Frostsnap's wallet engine only needs the master app key, so both kinds
+    /// share everything except signing and the devices.
+    fn wallet_target(
+        &self,
+        key_id: &str,
+    ) -> Result<(KeyId, MasterAppkey, Network, Arc<Mutex<CoordSuperWallet>>)> {
+        let key_id = parse_key(key_id)?;
+        let (master_appkey, network) = match self.frost_key(key_id) {
+            Ok(key) => (key.complete_key.master_appkey, key_network(&key)?),
+            Err(not_a_device_wallet) => {
+                let watch_only = self.0.watch_only.lock().unwrap();
+                let w = watch_only.get(&key_id).ok_or(not_a_device_wallet)?;
+                (w.master_appkey, w.network)
+            }
+        };
+        let wallet = self
+            .0
+            .wallets
+            .get(&network)
+            .cloned()
+            .ok_or(anyhow!("network {network} is not loaded"))?;
+        Ok((key_id, master_appkey, network, wallet))
+    }
+
     fn chain(&self, network: Network) -> Result<&ChainClient> {
         self.0
             .chains
@@ -1433,9 +1597,7 @@ impl Service {
     }
 
     pub fn wallet(&self, key_id: &str) -> Result<WalletView> {
-        let key = self.frost_key(parse_key(key_id)?)?;
-        let master_appkey = key.complete_key.master_appkey;
-        let (network, wallet) = self.wallet_for(&key)?;
+        let (key_id, master_appkey, network, wallet) = self.wallet_target(key_id)?;
         let mut wallet = wallet.lock().unwrap();
         let height = wallet.chain_tip().height();
         let txs = wallet.list_transactions(master_appkey);
@@ -1506,7 +1668,7 @@ impl Service {
         }
 
         Ok(WalletView {
-            key_id: key.key_id.to_string(),
+            key_id: key_id.to_string(),
             network: network.to_string(),
             height,
             balance,
@@ -1517,36 +1679,27 @@ impl Service {
 
     /// Reveals the next unused receive address.
     pub fn next_address(&self, key_id: &str) -> Result<AddressView> {
-        let key = self.frost_key(parse_key(key_id)?)?;
-        let (_, wallet) = self.wallet_for(&key)?;
-        let info = wallet
-            .lock()
-            .unwrap()
-            .next_address(key.complete_key.master_appkey);
+        let (_, master_appkey, _, wallet) = self.wallet_target(key_id)?;
+        let info = wallet.lock().unwrap().next_address(master_appkey);
         address_view(info.index, &info.address, info.used)
     }
 
     /// Records that receive address `index` was handed out (copied, shown, or checked on a
     /// device), as the official app does, so the next `next_address` is a fresh one.
     pub fn mark_address_shared(&self, key_id: &str, index: u32) -> Result<()> {
-        let key = self.frost_key(parse_key(key_id)?)?;
-        let (_, wallet) = self.wallet_for(&key)?;
+        let (_, master_appkey, _, wallet) = self.wallet_target(key_id)?;
         wallet
             .lock()
             .unwrap()
-            .mark_address_shared(key.complete_key.master_appkey, index)?;
+            .mark_address_shared(master_appkey, index)?;
         Ok(())
     }
 
     /// Every receive address handed out so far plus the next one, newest first, with whether
     /// each has received coins (to discourage reuse).
     pub fn addresses(&self, key_id: &str) -> Result<Vec<AddressListItem>> {
-        let key = self.frost_key(parse_key(key_id)?)?;
-        let (_, wallet) = self.wallet_for(&key)?;
-        let list = wallet
-            .lock()
-            .unwrap()
-            .list_addresses(key.complete_key.master_appkey);
+        let (_, master_appkey, _, wallet) = self.wallet_target(key_id)?;
+        let list = wallet.lock().unwrap().list_addresses(master_appkey);
         Ok(list
             .into_iter()
             .map(|a| AddressListItem {
@@ -1560,12 +1713,11 @@ impl Service {
 
     /// One receive address, with its QR code, to show again.
     pub fn address(&self, key_id: &str, index: u32) -> Result<AddressView> {
-        let key = self.frost_key(parse_key(key_id)?)?;
-        let (_, wallet) = self.wallet_for(&key)?;
+        let (_, master_appkey, _, wallet) = self.wallet_target(key_id)?;
         let info = wallet
             .lock()
             .unwrap()
-            .address(key.complete_key.master_appkey, index)
+            .address(master_appkey, index)
             .ok_or_else(|| anyhow!("address index {index} is out of range"))?;
         address_view(info.index, &info.address, info.used)
     }

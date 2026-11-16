@@ -11,6 +11,8 @@ pub enum Event {
     Devices { devices: Vec<DeviceView> },
     /// The full list of wallets (keys) this coordinator knows about.
     Keys { keys: Vec<KeyView> },
+    /// The full list of watch-only wallets (no devices; can't spend).
+    WatchOnly { wallets: Vec<WatchOnlyView> },
     /// Progress of giving devices fresh signing nonces.
     Nonces(NonceView),
     /// Progress of a key generation ceremony.
@@ -59,6 +61,21 @@ pub struct KeyView {
     pub threshold: u16,
     pub access_structure_id: String,
     pub devices: Vec<KeyDeviceView>,
+}
+
+/// A wallet added from a watch-only code: balance, history and addresses, but no devices.
+#[derive(Debug, Clone, Serialize)]
+pub struct WatchOnlyView {
+    pub key_id: String,
+    pub name: String,
+    pub network: String,
+}
+
+/// A wallet's watch-only code, as text and as a QR code.
+#[derive(Debug, Clone, Serialize)]
+pub struct WatchCodeView {
+    pub code: String,
+    pub qr_svg: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
