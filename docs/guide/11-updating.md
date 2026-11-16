@@ -7,9 +7,11 @@ your Frostsnap devices.
 
 ## Finding out about new versions
 
-Icebox doesn't check for updates by itself: it never contacts anything except your Electrum
-server. To hear about new versions:
+Icebox doesn't check for updates by itself. To find out about new versions:
 
+- Open **Help → About Icebox** and click **Check for updates**. Icebox asks GitHub, once, for the
+  latest release and tells you if there's a newer one, with a button to open its page. Nothing is
+  downloaded or installed automatically. *(Icebox 0.4 and later.)*
 - On GitHub, open the [Icebox repository](https://github.com/amisatoshi/icebox), click
   **Watch → Custom → Releases**, then **Apply**. GitHub emails you when a version is published.
 - Or check the [Releases page](https://github.com/amisatoshi/icebox/releases) from time to time.

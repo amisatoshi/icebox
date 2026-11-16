@@ -7,7 +7,7 @@ your first payment.
 > **Icebox is early, unaudited, independent software.** It is not made or endorsed by Frostsnap.
 > Start on **Signet** (free test coins), and keep mainnet amounts small until you trust it.
 
-This guide matches **Icebox 0.3**. If your version is different, check the guide in that
+This guide matches **Icebox 0.4**. If your version is different, check the guide in that
 release's tag on GitHub.
 
 ## Contents
@@ -20,7 +20,7 @@ release's tag on GitHub.
 6. [Send bitcoin](06-send.md): fees, signing one device at a time, broadcasting
 7. [Restore a wallet](07-restore.md): from devices, one at a time if they're in different places, including wallets made in the official app
 8. [Backups](08-backups.md): writing them down, showing them again, checking them
-9. [Wallet details and export](09-details-and-export.md): descriptor, Sparrow, BTCPay Server, removing a wallet
+9. [Wallet details and export](09-details-and-export.md): descriptor, Sparrow, BTCPay Server, watch-only wallets, removing a wallet
 10. [Settings and shortcuts](10-settings.md): Electrum servers, your own node, data folder, keyboard
 11. [Updating](11-updating.md): new Icebox versions, device firmware, uninstalling
 12. [Troubleshooting](12-troubleshooting.md): common messages and what to do

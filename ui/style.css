@@ -85,6 +85,9 @@ code, .mono { font-family: var(--mono); font-size: 13.5px; }
 /* an unfinished restore in the wallet list */
 .wallet-list button.restoring { border-style: dashed; border-color: var(--line); }
 .wallet-list button.restoring .wname { font-weight: 500; }
+/* a watch-only wallet in the wallet list */
+.wallet-list button.watching { border-style: dotted; }
+.file-btn { cursor: pointer; }
 
 /* ---------- main ---------- */
 .main { overflow-y: auto; padding: 28px 36px 60px; }
@@ -114,11 +117,11 @@ code, .mono { font-family: var(--mono); font-size: 13.5px; }
 .tabs button.active { color: var(--text); border-bottom-color: var(--ice); }
 
 label.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
-input[type=text], input[type=number], select {
+input[type=text], input[type=number], select, textarea {
   background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
   padding: 10px 12px; color: var(--text); min-width: 0;
 }
-input:focus, select:focus, button:focus-visible { outline: 2px solid var(--ice); outline-offset: 1px; }
+input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--ice); outline-offset: 1px; }
 .check { display: flex; gap: 8px; align-items: center; color: var(--text); font-size: 14px; }
 
 .btn {
@@ -213,3 +216,11 @@ td.num { font-family: var(--mono); text-align: right; white-space: nowrap; }
 /* Linux USB-rule hint on the empty Devices page */
 .linux-hint { text-align: left; margin-top: 14px; }
 .linux-hint .address-box { margin: 8px 0; }
+textarea { font-family: var(--mono, ui-monospace, monospace); font-size: 13px; resize: vertical; width: 100%; box-sizing: border-box; }
+
+/* QR scanner */
+.scanner-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+.scanner-card { width: min(560px, 100%); }
+.scanner-video { width: 100%; border-radius: 8px; background: #000; aspect-ratio: 4 / 3; object-fit: cover; }
+.row.nowrap { flex-wrap: nowrap; }
+.row.nowrap input { flex: 1; }

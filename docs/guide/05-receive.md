@@ -55,8 +55,8 @@ An incoming payment shows straight away at the top of the wallet as
 "+ … sats incoming, unconfirmed", and in **History** as **pending**. Once it's in a block it
 shows **1 conf**, and the number rises with each new block.
 
-If the incoming amount changes or a pending payment disappears before confirming, the sender
-has probably replaced it (for example to raise its fee). That's normal on Bitcoin. Wait for it
-to confirm.
+If a pending incoming payment disappears before confirming, the sender has replaced it (for
+example to raise its fee), and Icebox says so at the top of History. That's normal on Bitcoin:
+wait for the replacement to confirm.
 
 [← Create a wallet](04-create-wallet.md) · [Contents](README.md) · Next: [Send →](06-send.md)

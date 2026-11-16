@@ -24,6 +24,7 @@ const state = {
   restore: null,        // restore page: { scan, busy }
   restoreScanning: false,
   savedRestores: [],    // unfinished restores saved in the database (sidebar + Restore page)
+  watchOnly: [],        // wallets added from a watch-only code (no devices; can't spend)
   startupError: null,
   devices: [],
   keys: [],
@@ -124,6 +125,15 @@ function signLabel(k) {
   return n > k.threshold ? `${k.threshold} of ${n} to sign` : `${k.threshold} to sign · ${n} device${n === 1 ? "" : "s"}`;
 }
 
+/** A wallet by id: one with devices (from state.keys), or a watch-only one shaped the same way
+ *  (no devices, watch_only: true), so the wallet page can show both. */
+function walletInfo(keyId) {
+  const key = state.keys.find((k) => k.key_id === keyId);
+  if (key) return key;
+  const w = state.watchOnly.find((k) => k.key_id === keyId);
+  return w ? { ...w, watch_only: true, threshold: 0, devices: [] } : null;
+}
+
 /** Plugged-in devices that hold a wallet (they have a name) but aren't listed in any wallet here. */
 function unlistedDevices() {
   const listed = new Set(state.keys.flatMap((k) => k.devices.map((d) => d.id)));
@@ -216,6 +226,19 @@ function renderSidebar() {
         ),
       ),
     ),
+    // Watch-only wallets: balance and addresses, no devices.
+    ...state.watchOnly.map((k) =>
+      h("li", {},
+        h("button", {
+          class: "watching" + (k.key_id === current ? " active" : ""),
+          onclick: () => openWallet(k.key_id),
+          title: "Watch-only: can see this wallet but not spend from it",
+        },
+          h("span", { class: "wname", text: "👁 " + k.name }),
+          h("span", { class: "wsub", text: `watch-only · ${networkLabel(k.network)}` }),
+        ),
+      ),
+    ),
     // Unfinished restores: click to continue on the Restore page.
     ...state.savedRestores.map((r) =>
       h("li", {},
@@ -247,6 +270,7 @@ function renderView() {
     case "settings": return renderSettings();
     case "about": return renderAbout();
     case "restore": return renderRestore();
+    case "watch_add": return renderWatchAdd();
     default: return renderDevices();
   }
 }
@@ -271,7 +295,7 @@ async function enterDemo() {
   Object.assign(state, {
     devices: [], keys: [], chain: {}, nonces: null, keygen: null, verify: null, backup: null,
     signing: {}, wizard: null, wallet: null, settings: null, erase: null, startupError: null,
-    restore: null, restoreScanning: false, savedRestores: [],
+    restore: null, restoreScanning: false, savedRestores: [], watchOnly: [],
   });
   const [devices, keys] = await Promise.all([call("list_devices"), call("list_keys")]);
   state.devices = devices || [];
@@ -537,9 +561,64 @@ function renderAbout() {
         h("div", { class: "item" }, h("span", { class: "muted", text: "Licence" }), h("span", { text: "MIT · open source" })),
       ),
     ),
+    renderUpdateCheck(a),
     h("div", { class: "notice warn", text: "Icebox is independent, third-party software. It is not made or endorsed by Frostsnap, and it has not been audited. Use Signet (test coins) until you trust it, and keep mainnet amounts small." }),
     h("p", { class: "muted small", text: "Icebox uses the open-source frostsnap_core and frostsnap_coordinator crates (MIT) for all key generation, signing and device communication. Private keys never leave the devices." }),
   );
+}
+
+// Checking for updates only happens when the button is clicked: one request to GitHub's public
+// API for Icebox's releases. Icebox never checks by itself.
+const RELEASES_API = "https://api.github.com/repos/amisatoshi/icebox/releases?per_page=10";
+
+function semverParts(v) {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(v || "");
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+function isNewer(latest, current) {
+  const a = semverParts(latest), b = semverParts(current);
+  if (!a || !b) return false;
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i];
+  return false;
+}
+
+async function checkForUpdates() {
+  const u = state.update = { checking: true };
+  render();
+  try {
+    const res = await fetch(RELEASES_API, { headers: { Accept: "application/vnd.github+json" }, credentials: "omit", referrerPolicy: "no-referrer", cache: "no-store" });
+    if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
+    const releases = (await res.json()).filter((r) => !r.draft && semverParts(r.tag_name));
+    releases.sort((x, y) => (isNewer(x.tag_name, y.tag_name) ? -1 : isNewer(y.tag_name, x.tag_name) ? 1 : 0));
+    const latest = releases[0];
+    Object.assign(u, { checking: false, latest: latest ? latest.tag_name : null, newer: !!latest && isNewer(latest.tag_name, (state.appInfo || {}).version) });
+  } catch (e) {
+    Object.assign(u, { checking: false, error: "Couldn't reach GitHub. Check your connection, or look at the Releases page yourself." });
+  }
+  render();
+}
+
+function renderUpdateCheck(a) {
+  const u = state.update;
+  const box = h("div", { class: "card stack" }, h("h3", { text: "Updates" }));
+  if (!u || (!u.checking && !u.latest && !u.error)) {
+    box.append(
+      h("p", { class: "muted small", text: "Icebox never checks for updates by itself. Clicking the button asks GitHub (one request) for the latest Icebox release; GitHub sees your IP address, as when you visit any website." }),
+      h("div", { class: "row" }, h("button", { class: "btn", onclick: checkForUpdates }, "Check for updates")),
+    );
+  } else if (u.checking) {
+    box.append(h("p", { class: "muted", text: "Checking…" }));
+  } else if (u.error) {
+    box.append(h("div", { class: "notice warn", text: u.error }), h("div", { class: "row" }, h("button", { class: "btn small", onclick: checkForUpdates }, "Try again")));
+  } else if (u.newer) {
+    box.append(
+      h("div", { class: "notice", text: `Icebox ${u.latest.replace(/^v/, "")} is available (you have ${a.version}). Read what's changed, and check the download, before installing: see Updating in the user guide.` }),
+      h("div", { class: "row" }, h("button", { class: "btn primary", onclick: () => call("open_release", { tag: u.latest }) }, "Open the release page ↗")),
+    );
+  } else {
+    box.append(h("p", { text: `You're up to date (${a.version}).` }));
+  }
+  return box;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -712,14 +791,22 @@ function renderWizard() {
   return page;
 }
 
+function nameTaken(name) {
+  const n = (name || "").trim().toLowerCase();
+  return !!n && state.keys.concat(state.watchOnly).some((k) => k.name.trim().toLowerCase() === n);
+}
+
 function wizardName(w) {
   return h("div", { class: "card" },
     h("label", { class: "field" }, "Wallet name",
       h("input", {
         id: "wz-name", type: "text", value: w.name, maxlength: 20, placeholder: "e.g. Cold storage",
-        oninput: (e) => (w.name = e.target.value),
+        oninput: (e) => { const was = nameTaken(w.name); w.name = e.target.value; if (was !== nameTaken(w.name)) render(); },
       }),
     ),
+    nameTaken(w.name)
+      ? h("div", { class: "notice warn", text: `You already have a wallet called "${w.name.trim()}". A different name avoids mixing them up, here and on the devices' screens.` })
+      : null,
     h("label", { class: "field" }, "Network",
       h("select", { id: "wz-network", onchange: (e) => { w.network = e.target.value; render(); } },
         ...["signet", "testnet", "regtest", "bitcoin"].map((n) =>
@@ -1004,19 +1091,20 @@ function freshSend() {
 async function refreshWallet() {
   const w = state.wallet;
   if (!w) return;
+  const watchOnly = !!(walletInfo(w.keyId) || {}).watch_only;
   const [data, sessions] = await Promise.all([
     call("wallet", { keyId: w.keyId }),
-    call("sessions", { keyId: w.keyId }),
+    watchOnly ? Promise.resolve([]) : call("sessions", { keyId: w.keyId }),
   ]);
   if (state.wallet !== w) return;
-  if (data) w.data = data;
+  if (data) { noteReplaced(w, data); w.data = data; }
   if (sessions) w.sessions = sessions;
   render();
 }
 
 function renderWallet() {
   const w = state.wallet;
-  const key = state.keys.find((k) => k.key_id === w.keyId);
+  const key = walletInfo(w.keyId);
   if (!key) return h("div", { class: "page" }, h("p", { class: "muted", text: "Loading…" }));
   const data = w.data;
   const chain = state.chain[key.network];
@@ -1027,7 +1115,9 @@ function renderWallet() {
         h("div", { class: "row" },
           h("h1", { text: key.name }),
           h("span", { class: "pill" + (key.network === "bitcoin" ? " main" : ""), text: networkLabel(key.network) }),
-          h("span", { class: "pill", text: signLabel(key), title: `${key.devices.length} device${key.devices.length === 1 ? "" : "s"} known to Icebox` }),
+          key.watch_only
+            ? h("span", { class: "pill", text: "👁 watch-only", title: "This computer can see this wallet but not spend from it" })
+            : h("span", { class: "pill", text: signLabel(key), title: `${key.devices.length} device${key.devices.length === 1 ? "" : "s"} known to Icebox` }),
         ),
         h("p", { class: "sub" },
           chain ? `Electrum: ${chain.state}` : "Electrum: not connected yet",
@@ -1043,7 +1133,11 @@ function renderWallet() {
     ),
   );
 
-  const unlisted = state.demo ? [] : unlistedDevices();
+  if (key.watch_only) {
+    page.append(h("div", { class: "notice", text: "Watch-only: this computer can see the balance, history and receive addresses, but can't spend. Payments are signed with the wallet's devices, on a computer where the wallet has them." }));
+  }
+
+  const unlisted = state.demo || key.watch_only ? [] : unlistedDevices();
   if (unlisted.length) {
     page.append(h("div", { class: "notice" },
       `${listJoin(unlisted.map((d) => d.name))} ${unlisted.length === 1 ? "is" : "are"} plugged in but not listed in any wallet here. If ${unlisted.length === 1 ? "it belongs" : "they belong"} to this wallet (for example one restored from some of its devices), `,
@@ -1065,7 +1159,10 @@ function renderWallet() {
     ));
   }
 
-  const tabs = [["history", "History"], ["receive", "Receive"], ["send", "Send"], ["backups", "Backups"], ["details", "Details"]];
+  const tabs = key.watch_only
+    ? [["history", "History"], ["receive", "Receive"], ["details", "Details"]]
+    : [["history", "History"], ["receive", "Receive"], ["send", "Send"], ["backups", "Backups"], ["details", "Details"]];
+  if (!tabs.some(([id]) => id === w.tab)) w.tab = "history";
   page.append(h("div", { class: "tabs" },
     ...tabs.map(([id, label]) => h("button", {
       class: w.tab === id ? "active" : "",
@@ -1081,15 +1178,28 @@ function renderWallet() {
   return page;
 }
 
+// An unconfirmed payment that hasn't been seen for two weeks has usually been dropped by the
+// network (nodes forget unconfirmed payments after about 14 days) and may never confirm.
+const STALE_PENDING_SECS = 14 * 24 * 3600;
+
 function renderHistory(w) {
   const txs = (w.data && w.data.txs) || [];
+  const replaced = (w.replaced || []).map((r) => h("div", { class: "notice warn" },
+    `An incoming payment of ${fmtSats(r.amount)} that hadn't confirmed was replaced by its sender (for example to change its fee or amount). `,
+    "That's normal on Bitcoin: wait for the replacement to confirm. ",
+    h("button", { class: "link", onclick: () => { w.replaced = w.replaced.filter((x) => x !== r); render(); } }, "Dismiss"),
+  ));
   if (!txs.length) {
     return h("div", { class: "card empty" },
       h("p", { text: "No transactions yet." }),
       h("button", { class: "btn", onclick: () => { w.tab = "receive"; render(); } }, "Receive bitcoin"),
     );
   }
-  return h("div", { class: "card" },
+  const now = Date.now() / 1000;
+  const stale = (tx) => tx.confirmations < 1 && tx.timestamp && now - tx.timestamp > STALE_PENDING_SECS;
+  return h("div", { class: "stack" }, ...replaced,
+    txs.some(stale) ? h("div", { class: "notice warn", text: "A payment marked \"may never confirm\" has been waiting for over two weeks. The network has probably dropped it (usually because its fee was too low), so it may never confirm. Click its transaction id to check it on mempool.space. Fee bumping, which can rescue payments like this, is planned for a later version." }) : null,
+    h("div", { class: "card" },
     h("table", {},
       h("thead", {}, h("tr", {}, h("th", { text: "When" }), h("th", { text: "Transaction" }), h("th", { text: "Amount" }), h("th", { text: "Status" }))),
       h("tbody", {},
@@ -1098,13 +1208,32 @@ function renderHistory(w) {
           h("td", {}, txLink(w.data.network, tx.txid)),
           h("td", { class: "num " + (tx.net_value > 0 ? "pos" : "neg"), text: tx.net_value === null ? "—" : (tx.net_value > 0 ? "+" : "") + fmtSats(tx.net_value) }),
           h("td", {}, h("span", {
-            class: "pill" + (tx.confirmations >= 1 ? " ok" : " warn"),
-            text: tx.confirmations >= 1 ? `${tx.confirmations} conf` : "pending",
+            class: "pill" + (tx.confirmations >= 1 ? " ok" : stale(tx) ? " bad" : " warn"),
+            text: tx.confirmations >= 1 ? `${tx.confirmations} conf` : stale(tx) ? "may never confirm" : "pending",
           })),
         )),
       ),
     ),
+    ),
   );
+}
+
+/** Notices incoming payments that vanished before confirming: their sender replaced them. */
+function noteReplaced(w, data) {
+  const pendingIn = (txs) => txs.filter((t) => t.confirmations < 1 && t.net_value > 0);
+  if (w.data && w.data.key_id === data.key_id) {
+    const now = new Set(data.txs.map((t) => t.txid));
+    const gone = pendingIn(w.data.txs).filter((t) => !now.has(t.txid));
+    if (gone.length) w.replaced = (w.replaced || []).concat(gone.map((t) => ({ txid: t.txid, amount: t.net_value })));
+  }
+}
+
+/** The smallest amount that can be sent to an address (below it, an output is "dust"). */
+function minSendSats(address) {
+  const a = (address || "").trim().toLowerCase().replace(/^bitcoin:/, "").split("?")[0];
+  if (/^(bc|tb|bcrt)1q/.test(a)) return a.length > 50 ? 330 : 294; // P2WSH : P2WPKH
+  if (/^[13mn2]/.test(a)) return 546;
+  return 330; // Taproot (bc1p…), and the default
 }
 
 // A transaction id that opens mempool.space in the browser. Icebox builds the URL itself (see
@@ -1181,12 +1310,12 @@ function renderReceive(key, w) {
         addressChunks(a.address),
         h("div", { class: "row" },
           h("button", { class: "btn", onclick: () => navigator.clipboard.writeText(a.address).then(() => { toast("Copied"); markShared(key, w, a); }) }, "Copy"),
-          h("button", {
+          key.watch_only ? null : h("button", {
             class: "btn primary",
             onclick: () => { state.verify = { target_devices: [], connected_devices: [], started: true }; call("verify_address", { keyId: key.key_id, index: a.index }); markShared(key, w, a); render(); },
           }, "Check on a device"),
         ),
-        v ? h("div", { class: "notice" },
+        key.watch_only ? h("div", { class: "notice warn", text: "Watch-only: there are no devices here to check this address on. Before giving it out for a large payment, check it on one of the wallet's devices from the computer that has them (it's the same address there)." }) : v ? h("div", { class: "notice" },
           v.connected_devices && v.connected_devices.length
             ? `Now showing on ${v.connected_devices.map(deviceName).join(", ")}. Compare it group by group with the address here. Only share it if they match exactly.`
             : "Plug in any device from this wallet to see the address on its screen.",
@@ -1249,11 +1378,20 @@ function renderSend(key, w) {
   if (!s.preview) {
     card.append(
       h("label", { class: "field" }, "Pay to",
-        h("input", { id: "send-address", type: "text", value: s.address, placeholder: key.network === "bitcoin" ? "bc1…" : "tb1…", spellcheck: "false", oninput: (e) => (s.address = e.target.value) }),
+        h("div", { class: "row nowrap" },
+          h("input", { id: "send-address", type: "text", value: s.address, placeholder: key.network === "bitcoin" ? "bc1…" : "tb1…", spellcheck: "false", oninput: (e) => (s.address = e.target.value) }),
+          scanButton((text) => {
+            const p = parsePaymentQr(text);
+            s.address = p.address;
+            if (p.sats !== null) { s.amount = String(p.sats); s.max = false; }
+            render();
+          }),
+        ),
       ),
       h("div", { class: "grid2" },
         h("label", { class: "field" }, "Amount (sats)",
           h("input", { id: "send-amount", type: "number", min: "1", step: "1", value: s.amount, disabled: s.max, oninput: (e) => (s.amount = e.target.value) }),
+          h("span", { class: "muted small", text: `Minimum ${fmtSats(minSendSats(s.address))}${s.address.trim() ? " to this address" : ""}: smaller amounts can't be sent ("dust").` }),
           h("label", { class: "check" }, h("input", { type: "checkbox", checked: s.max, onchange: (e) => { s.max = e.target.checked; render(); } }), "Send everything"),
         ),
         h("label", { class: "field" }, "Fee rate (sat/vB)",
@@ -1268,6 +1406,7 @@ function renderSend(key, w) {
           onclick: async () => {
             const amount = s.max ? null : Math.floor(Number(s.amount));
             if (!s.max && !(amount > 0)) return toast("Enter an amount in sats", true);
+            if (!s.max && amount < minSendSats(s.address)) return toast(`That's below the minimum of ${fmtSats(minSendSats(s.address))} for this address`, true);
             const feerate = Number(s.feerate);
             if (!(feerate >= 1)) return toast("Enter a fee rate of at least 1 sat/vB", true);
             s.busy = true; render();
@@ -1465,7 +1604,9 @@ function renderDetails(key, w) {
   return h("div", { class: "card" },
     h("div", { class: "list" },
       h("div", { class: "item" }, h("span", { class: "muted", text: "Network" }), h("span", { text: networkLabel(key.network) })),
-      h("div", { class: "item" }, h("span", { class: "muted", text: "Spending rule" }), h("span", { text: `any ${key.threshold} devices (${key.devices.length} known to Icebox)` })),
+      key.watch_only
+        ? h("div", { class: "item" }, h("span", { class: "muted", text: "Spending" }), h("span", { text: "not from this computer (watch-only)" }))
+        : h("div", { class: "item" }, h("span", { class: "muted", text: "Spending rule" }), h("span", { text: `any ${key.threshold} devices (${key.devices.length} known to Icebox)` })),
       h("div", { class: "item" }, h("span", { class: "muted", text: "Key id" }), h("span", { class: "mono small", text: key.key_id })),
     ),
     h("h3", { text: "Watch-only descriptor" }),
@@ -1478,7 +1619,201 @@ function renderDetails(key, w) {
       w.descriptorQr ? h("img", { class: "qr", src: w.descriptorQr, alt: "QR code of the watch-only descriptor" }) : null,
     ) : h("p", { class: "muted", text: "Loading…" }),
     renderBtcpay(key, w),
-    renderRemoveWallet(key, w),
+    renderWatchCode(key, w),
+    key.watch_only ? renderRemoveWatchOnly(key) : renderRemoveWallet(key, w),
+  );
+}
+
+// A watch-only code lets another Icebox, with no devices, follow this wallet: balance, history
+// and receive addresses. It can't spend, but like the descriptor it reveals every payment.
+function renderWatchCode(key, w) {
+  const box = h("div", { class: "stack" },
+    h("h3", { text: "Watch this wallet on another computer" }),
+    h("p", { class: "muted small", text: "Add this code on another computer with Icebox (Add watch-only wallet) to see the balance, history and receive addresses there, with no devices. It can't spend, but it reveals every payment, so only share it with people you'd show your balance to." }),
+  );
+  if (!w.watchCode) {
+    box.append(h("div", { class: "row" }, h("button", {
+      class: "btn",
+      onclick: async () => { const c = await call("watch_only_code", { keyId: key.key_id }); if (c) { w.watchCode = c; render(); } },
+    }, "Show watch-only code")));
+    return box;
+  }
+  box.append(h("div", { class: "grid2" },
+    h("div", { class: "stack" },
+      h("div", { class: "address-box small", text: w.watchCode.code }),
+      h("div", { class: "row" },
+        h("button", { class: "btn", onclick: () => navigator.clipboard.writeText(w.watchCode.code).then(() => toast("Copied")) }, "Copy code"),
+        h("button", { class: "btn ghost", onclick: () => { w.watchCode = null; render(); } }, "Hide"),
+      ),
+    ),
+    h("img", { class: "qr", src: w.watchCode.qr_svg, alt: "QR code of the watch-only code" }),
+  ));
+  return box;
+}
+
+function renderRemoveWatchOnly(key) {
+  return h("div", { class: "danger-zone" },
+    h("h3", { text: "Remove watch-only wallet" }),
+    h("p", { class: "muted small", text: "Stops watching this wallet on this computer. Nothing else changes: the wallet, its coins and its devices are unaffected, and you can add it again from its code." }),
+    h("button", {
+      class: "btn danger",
+      onclick: async () => {
+        if (await call("remove_watch_only", { keyId: key.key_id }) === undefined) return;
+        toast(`Stopped watching "${key.name}"`);
+        state.wallet = null;
+        state.view = { name: "devices" };
+        render();
+      },
+    }, "Stop watching"),
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// QR scanning with the webcam
+// ---------------------------------------------------------------------------------------------
+// Frames are drawn to a canvas, turned to greyscale and sent to the Rust side to decode (no
+// third-party JavaScript). The camera is on only while the scanner is open, and nothing is saved.
+
+/** A "📷 Scan" button that opens the scanner and calls onResult with the text found. */
+function scanButton(onResult, label) {
+  return h("button", {
+    class: "btn ghost", type: "button", title: "Scan a QR code with this computer's camera",
+    onclick: (e) => { e.preventDefault(); openScanner(onResult); },
+  }, label || "📷 Scan");
+}
+
+/** Reads a scanned payment QR: a plain address, or a bitcoin: link with an optional amount. */
+function parsePaymentQr(text) {
+  const t = text.trim();
+  const m = /^bitcoin:([^?]+)(\?(.*))?$/i.exec(t);
+  if (!m) return { address: t, sats: null };
+  let sats = null;
+  const params = new URLSearchParams(m[3] || "");
+  const btc = params.get("amount");
+  if (btc && /^\d+(\.\d{1,8})?$/.test(btc)) {
+    const [whole, frac = ""] = btc.split(".");
+    sats = Number(whole) * 100000000 + Number((frac + "00000000").slice(0, 8));
+  }
+  // Wallets often upper-case bech32 addresses in QR codes; Icebox wants lower case.
+  const address = /^(bc|tb|bcrt)1/i.test(m[1]) ? m[1].toLowerCase() : m[1];
+  return { address, sats };
+}
+
+let scanner = null;
+
+async function openScanner(onResult) {
+  if (scanner) return;
+  if (state.demo) { toast("Demo mode doesn't use the camera. Paste the text instead.", true); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast("The camera isn't available in Icebox on this system yet. Paste the text instead.", true);
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+  } catch (e) {
+    toast(e && e.name === "NotAllowedError"
+      ? "Icebox wasn't allowed to use the camera. Allow it in your system's privacy settings, or paste the text instead."
+      : "Couldn't start the camera. Is one connected and free? You can paste the text instead.", true);
+    return;
+  }
+  const video = h("video", { class: "scanner-video", autoplay: true, muted: true, playsinline: true });
+  video.muted = true;
+  video.srcObject = stream;
+  const status = h("p", { class: "muted small", text: "Hold the QR code up to the camera…" });
+  const overlay = h("div", { class: "scanner-overlay", role: "dialog", "aria-label": "Scan a QR code" },
+    h("div", { class: "card stack scanner-card" },
+      h("h2", { text: "Scan a QR code" }),
+      video,
+      status,
+      h("div", { class: "row" }, h("button", { class: "btn ghost", onclick: () => closeScanner() }, "Cancel")),
+    ),
+  );
+  document.body.append(overlay);
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  scanner = { stream, overlay, timer: null, busy: false };
+
+  const tick = async () => {
+    if (!scanner || scanner.busy || video.readyState < 2) return;
+    // Scale down so each frame is small to send and quick to decode.
+    const scale = Math.min(1, 800 / (video.videoWidth || 800));
+    const w = Math.max(1, Math.round(video.videoWidth * scale));
+    const hgt = Math.max(1, Math.round(video.videoHeight * scale));
+    canvas.width = w; canvas.height = hgt;
+    ctx.drawImage(video, 0, 0, w, hgt);
+    const rgba = ctx.getImageData(0, 0, w, hgt).data;
+    const grey = new Uint8Array(w * hgt);
+    for (let i = 0, j = 0; j < grey.length; i += 4, j++) grey[j] = (rgba[i] * 77 + rgba[i + 1] * 150 + rgba[i + 2] * 29) >> 8;
+    let bin = "";
+    for (let i = 0; i < grey.length; i += 0x8000) bin += String.fromCharCode.apply(null, grey.subarray(i, i + 0x8000));
+    scanner.busy = true;
+    try {
+      const text = await invoke("decode_qr", { width: w, height: hgt, data: btoa(bin) });
+      if (text && scanner) { closeScanner(); onResult(text); toast("QR code read"); }
+    } catch (_) {
+      status.textContent = "Couldn't read that frame. Keep the code steady and well lit.";
+    } finally {
+      if (scanner) scanner.busy = false;
+    }
+  };
+  scanner.timer = setInterval(tick, 300);
+}
+
+function closeScanner() {
+  if (!scanner) return;
+  clearInterval(scanner.timer);
+  scanner.stream.getTracks().forEach((t) => t.stop());
+  scanner.overlay.remove();
+  scanner = null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// add a watch-only wallet
+// ---------------------------------------------------------------------------------------------
+
+function openWatchAdd() {
+  state.watchAdd = { code: "", busy: false };
+  state.view = { name: "watch_add" };
+  render();
+}
+
+function renderWatchAdd() {
+  const a = state.watchAdd || (state.watchAdd = { code: "", busy: false });
+  const add = async () => {
+    a.busy = true; render();
+    const keyId = await call("add_watch_only", { code: a.code });
+    a.busy = false;
+    if (keyId) {
+      state.watchOnly = (await call("watch_only_wallets")) || state.watchOnly;
+      toast("Watch-only wallet added");
+      openWallet(keyId);
+    } else render();
+  };
+  return h("div", { class: "page" },
+    h("h1", { text: "Add watch-only wallet" }),
+    h("p", { class: "sub", text: "Follow a wallet's balance, history and receive addresses on this computer, without its devices. It can't spend." }),
+    h("div", { class: "card stack" },
+      h("p", { text: "On the computer that has the wallet, open it in Icebox and go to Details → Show watch-only code. Copy the code (it starts icebox-watch1:) and paste it here, or open a text file containing it." }),
+      h("label", { class: "field" }, "Watch-only code",
+        h("textarea", { id: "watch-code", rows: "4", spellcheck: "false", placeholder: "icebox-watch1:…", oninput: (e) => { a.code = e.target.value; } }, a.code),
+      ),
+      h("div", { class: "row" },
+        h("button", { class: "btn primary", disabled: a.busy, onclick: add }, a.busy ? "Adding…" : "Add wallet"),
+        scanButton((text) => { a.code = text.trim(); render(); }, "Scan QR code"),
+        h("label", { class: "btn ghost file-btn" }, "Open a file…",
+          h("input", {
+            type: "file", accept: ".txt,text/plain", hidden: true,
+            onchange: (e) => {
+              const f = e.target.files && e.target.files[0];
+              if (!f) return;
+              f.text().then((t) => { a.code = t.trim(); render(); });
+            },
+          }),
+        ),
+      ),
+      h("p", { class: "muted small", text: "Only Icebox watch-only codes work here. Descriptors from other wallets (such as Sparrow) can't be watched in Icebox yet." }),
+    ),
   );
 }
 
@@ -1609,6 +1944,9 @@ function onEvent(e) {
     case "devices":
       state.devices = e.devices;
       break;
+    case "watch_only":
+      state.watchOnly = e.wallets || [];
+      break;
     case "keys":
       state.keys = e.keys;
       break;
@@ -1723,6 +2061,8 @@ async function main() {
   $("new-wallet-btn").addEventListener("click", startWizard);
   const restoreBtn = $("restore-btn");
   if (restoreBtn) restoreBtn.addEventListener("click", openRestore);
+  const watchAddBtn = $("watch-add-btn");
+  if (watchAddBtn) watchAddBtn.addEventListener("click", openWatchAdd);
   $("devices-btn").addEventListener("click", () => { state.view = { name: "devices" }; render(); });
   $("settings-btn").addEventListener("click", openSettings);
 
@@ -1747,6 +2087,7 @@ async function main() {
   state.keys = keys || [];
   state.appInfo = await call("app_info");
   state.savedRestores = (await call("saved_restores")) || [];
+  state.watchOnly = (await call("watch_only_wallets")) || [];
   state.ready = true;
   if (state.keys.length) openWallet(state.keys[0].key_id);
   else render();

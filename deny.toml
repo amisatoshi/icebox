@@ -13,6 +13,7 @@ ignore = [
   { id = "RUSTSEC-2026-0371", reason = "zbus_names: merged into zbus 6, not vulnerable; same route as above" },
   { id = "RUSTSEC-2026-0372", reason = "zvariant_derive: merged into zbus 6, not vulnerable; same route as above" },
   { id = "RUSTSEC-2023-0071", reason = "Marvin attack needs timing of RSA private-key operations; Icebox (via frostsnap_comms) only verifies device genuineness certificates with public keys" },
+  { id = "RUSTSEC-2026-0459", reason = "SQLite page-cache leak needs a crafted database plus -wal file from a less trusted party; Icebox only opens its own database in the user data folder. Bundled via rusqlite 0.31, which frostsnap_coordinator and bdk_chain pin; drop when Frostsnap moves to rusqlite 0.41 or later" },
 ]
 
 [licenses]

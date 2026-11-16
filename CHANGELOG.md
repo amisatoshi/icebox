@@ -6,6 +6,31 @@ All notable changes to Icebox are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-08
+
+### Added
+- **Watch-only wallets.** Details → **Show watch-only code** gives a code and QR code
+  (`icebox-watch1:…`) that another Icebox adds with **Add watch-only wallet** (paste, scan or open
+  a file), to see the wallet's balance, history and receive addresses with no devices. It can't
+  spend. Codes carry the wallet's master app key (Frostsnap's wallet engine needs it; a
+  descriptor doesn't contain it), the network and the name, with a checksum against typos.
+  Saved in Icebox's own `icebox_watch_only` table; the official app ignores it.
+- **Webcam QR scanning** on the Send page (addresses and `bitcoin:` links, including the amount)
+  and when adding a watch-only wallet. Frames are decoded in Rust with `rqrr`, so there's still
+  no third-party JavaScript; the camera is only on while the scan window is open and nothing is
+  stored. Windows and macOS (macOS asks permission; `NSCameraUsageDescription` added). Not yet on
+  Linux.
+- **Check for updates** on the About page: one request to GitHub's public API, only when clicked,
+  with a button to open the new release's page (the URL is built and checked in Rust).
+  `connect-src` now allows `https://api.github.com` for this.
+
+### Changed
+- History explains when an incoming payment was replaced by its sender, and marks payments that
+  have waited over two weeks as "may never confirm".
+- The Send page shows the minimum amount for the address entered (dust limit), and refuses less
+  before building the payment.
+- The new-wallet wizard warns when the name is already used by another wallet.
+
 ## [0.3.1] - 2026-11-08
 
 ### Fixed
@@ -122,7 +147,8 @@ All notable changes to Icebox are recorded here. The format follows
   history over Electrum, receive with on-device address check, send with per-device signing and
   broadcast, watch-only descriptor, Electrum server settings.
 
-[Unreleased]: https://github.com/amisatoshi/icebox/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/amisatoshi/icebox/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/amisatoshi/icebox/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/amisatoshi/icebox/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/amisatoshi/icebox/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/amisatoshi/icebox/releases/tag/v0.2.0

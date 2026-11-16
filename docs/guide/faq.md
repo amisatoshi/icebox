@@ -47,11 +47,13 @@ Single-use numbers each device needs for every signature. Icebox tops them up fo
 **Does Icebox send my data anywhere?**
 Only to the Electrum server it uses to read the blockchain and broadcast payments. That server
 can see which addresses you ask about, so for privacy use [your own node](10-settings.md#use-your-own-node-recommended-for-mainnet).
-There are no accounts, analytics or update checks.
+There are no accounts or analytics. It only checks GitHub for a newer version when you click
+**Check for updates**, and it only uses the camera while you're scanning a QR code.
 
 **Can I watch my wallet on another computer or phone?**
-Yes, with the [watch-only descriptor](09-details-and-export.md#watch-only-descriptor-sparrow-bitcoin-core-and-others)
-in Sparrow or Bitcoin Core. Watch-only wallets inside Icebox are coming next.
+Yes. On another computer with Icebox, add it as a [watch-only wallet](09-details-and-export.md#watch-this-wallet-on-another-computer)
+from its code. Or use the [watch-only descriptor](09-details-and-export.md#watch-only-descriptor-sparrow-bitcoin-core-and-others)
+in Sparrow or Bitcoin Core.
 
 **Can I use it for a business?**
 Yes: [BTCPay Server export](09-details-and-export.md#accept-payments-with-btcpay-server) lets a

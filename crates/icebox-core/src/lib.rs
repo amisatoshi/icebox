@@ -6,6 +6,7 @@ mod device_list;
 pub mod events;
 mod restore;
 mod service;
+mod watch_only;
 
 pub use events::Event;
 pub use service::{parse_network, EventFn, Service};
@@ -66,9 +67,132 @@ pub fn btcpay_derivation_scheme(descriptor: &str) -> Result<String, String> {
     Ok(format!("{key}-[taproot]"))
 }
 
+/// The GitHub page for an Icebox release, or an error unless `tag` looks like a release tag
+/// (`v1.2.3`, optionally with a suffix such as `-rc.1`). Icebox builds the URL itself, so the
+/// page can never hand an arbitrary link to the system.
+pub fn release_url(tag: &str) -> Result<String, String> {
+    let tag = tag.trim();
+    let version = tag
+        .strip_prefix('v')
+        .ok_or("that isn't an Icebox release")?;
+    let (core, suffix) = match version.split_once('-') {
+        Some((core, suffix)) => (core, Some(suffix)),
+        None => (version, None),
+    };
+    let parts: Vec<&str> = core.split('.').collect();
+    let numeric = |p: &&str| !p.is_empty() && p.len() <= 5 && p.bytes().all(|b| b.is_ascii_digit());
+    let suffix_ok = suffix.is_none_or(|s| {
+        !s.is_empty() && s.len() <= 20 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.')
+    });
+    if parts.len() != 3 || !parts.iter().all(numeric) || !suffix_ok {
+        return Err("that isn't an Icebox release".into());
+    }
+    Ok(format!(
+        "https://github.com/amisatoshi/icebox/releases/tag/{tag}"
+    ))
+}
+
+/// Largest camera frame accepted for QR decoding (pixels), to bound the work per frame.
+const MAX_QR_FRAME: usize = 1920 * 1080;
+
+/// Reads a QR code from one camera frame, sent from the UI as base64 greyscale pixels (one byte
+/// per pixel, row by row, 0 = black). Returns the text of the first QR code found, `None` if
+/// there isn't a readable one in this frame, or an error for a malformed frame. Decoding happens
+/// here, in Rust, so the UI needs no third-party JavaScript, and frames never leave the computer.
+pub fn decode_qr_frame(
+    width: usize,
+    height: usize,
+    pixels_b64: &str,
+) -> Result<Option<String>, String> {
+    use base64::Engine;
+    if width == 0 || height == 0 || width.saturating_mul(height) > MAX_QR_FRAME {
+        return Err("camera frame has an unsupported size".into());
+    }
+    let pixels = base64::engine::general_purpose::STANDARD
+        .decode(pixels_b64)
+        .map_err(|_| "camera frame isn't valid base64".to_string())?;
+    if pixels.len() != width * height {
+        return Err("camera frame is the wrong length".into());
+    }
+    Ok(decode_qr(width, height, &pixels))
+}
+
+fn decode_qr(width: usize, height: usize, pixels: &[u8]) -> Option<String> {
+    let mut img =
+        rqrr::PreparedImage::prepare_from_greyscale(width, height, |x, y| pixels[y * width + x]);
+    img.detect_grids()
+        .into_iter()
+        .find_map(|grid| grid.decode().ok().map(|(_meta, text)| text))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Draws `text` as a QR code into a greyscale buffer, like a camera frame of a screen.
+    fn qr_frame(text: &str) -> (usize, usize, Vec<u8>) {
+        let code = qrcode::QrCode::new(text.as_bytes()).unwrap();
+        let modules = code.width();
+        let colors = code.to_colors();
+        let (scale, quiet) = (6, 4);
+        let size = (modules + 2 * quiet) * scale;
+        let mut pixels = vec![255u8; size * size];
+        for y in 0..modules {
+            for x in 0..modules {
+                if colors[y * modules + x] == qrcode::Color::Dark {
+                    for dy in 0..scale {
+                        for dx in 0..scale {
+                            let (px, py) = ((x + quiet) * scale + dx, (y + quiet) * scale + dy);
+                            pixels[py * size + px] = 0;
+                        }
+                    }
+                }
+            }
+        }
+        (size, size, pixels)
+    }
+
+    #[test]
+    fn qr_codes_are_read_back_from_frames() {
+        for text in [
+            "BITCOIN:TB1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KXPJZSX",
+            "icebox-watch1:signet:0325b0d1cda060241998916f45d02e227db436bdd708a55cf1dc67f3f534e332186fd6543fbfc5dd07094e93543fa05120f12d3a80876aa011a4897b7a0770d1fb:1a2b3c4d:Cold storage",
+        ] {
+            let (w, h, pixels) = qr_frame(text);
+            let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &pixels);
+            assert_eq!(decode_qr_frame(w, h, &b64).unwrap().as_deref(), Some(text));
+        }
+    }
+
+    #[test]
+    fn release_links_only_for_release_tags() {
+        assert_eq!(
+            release_url("v0.4.0").unwrap(),
+            "https://github.com/amisatoshi/icebox/releases/tag/v0.4.0"
+        );
+        assert!(release_url("v1.2.3-rc.1").is_ok());
+        for bad in [
+            "0.4.0",
+            "v0.4",
+            "v0.4.0/../../evil",
+            "v0.4.0?x=1",
+            "v0.4.0-",
+            "vx.y.z",
+            "",
+        ] {
+            assert!(release_url(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn frames_without_a_code_or_malformed_are_handled() {
+        let blank = vec![255u8; 200 * 100];
+        let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &blank);
+        assert_eq!(decode_qr_frame(200, 100, &b64), Ok(None));
+        assert!(decode_qr_frame(200, 99, &b64).is_err());
+        assert!(decode_qr_frame(0, 0, "").is_err());
+        assert!(decode_qr_frame(10, 10, "not base64!").is_err());
+    }
 
     #[test]
     fn btcpay_scheme_from_descriptor() {

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Tauri merges this into the app's Info.plist. macOS shows this text when Icebox first asks
+       for the camera (only when you click a Scan QR button). -->
+  <key>NSCameraUsageDescription</key>
+  <string>Icebox uses the camera only while you scan a QR code, such as an address or a watch-only code. Camera images are read on this computer and never stored or sent anywhere.</string>
+</dict>
+</plist>

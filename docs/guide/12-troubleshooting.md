@@ -88,6 +88,18 @@ the official Frostsnap app to bump the fee.
 **The balance says "syncing…".**
 Icebox is still fetching the blockchain. Give it a minute, especially the first time.
 
+## The webcam
+
+**"The camera isn't available in Icebox on this system yet."** On Linux, Icebox can't use the
+camera yet. Paste the address or code instead.
+
+**"Icebox wasn't allowed to use the camera."** Allow it: on macOS, **System Settings → Privacy &
+Security → Camera → Icebox**; on Windows, **Settings → Privacy & security → Camera** (camera
+access, and letting desktop apps use it).
+
+**The scanner opens but never reads the code.** Hold the code steady, filling about half the
+picture, in good light without glare. A code shown on a phone is easier with the brightness up.
+
 ## Installing
 
 **Windows says "Windows protected your PC".** Click **More info → Run anyway**. See

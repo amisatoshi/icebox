@@ -99,6 +99,18 @@ sending, restoring, backups, BTCPay Server and troubleshooting, with screenshots
 - One wallet per device, as in the official app: new wallets use blank devices
 - Remove a wallet from Icebox (the devices keep their shares; restore it any time)
 
+**New in 0.4:**
+
+- **Watch-only wallets**: see a wallet's balance, history and receive addresses on a computer
+  with no devices, added from a code or QR code exported by another Icebox (Details → Show
+  watch-only code)
+- **Scan QR codes with the webcam**: payment addresses and `bitcoin:` links on the Send page, and
+  watch-only codes. Decoded in Rust; the camera is only on while the scan window is open
+- **Check for updates** on the About page (only when you click it)
+- Replaced incoming payments are explained; payments waiting over two weeks are marked "may never
+  confirm"; the Send page shows the minimum amount; a warning if a new wallet's name is already
+  in use
+
 **New in 0.3:**
 
 - **Restore one device at a time**: save a restore after plugging in the first device, then add
@@ -168,11 +180,11 @@ Mac app on a Mac, Linux packages on Linux. Output goes to `target/release/bundle
 
 | System  | File | Notes |
 |---------|------|-------|
-| Windows | `msi/Icebox_0.3.1_x64_en-US.msi` | the one file to send; installs to Start menu with an uninstaller |
-| Linux   | `deb/Icebox_0.3.1_amd64.deb` | Debian/Ubuntu; also installs the udev rule for the devices |
-| Linux   | `rpm/Icebox-0.3.1-1.x86_64.rpm` | Fedora etc.; also installs the udev rule |
-| Linux   | `appimage/Icebox_0.3.1_amd64.AppImage` | any distro; install `linux/70-frostsnap.rules` by hand |
-| macOS   | `dmg/Icebox_0.3.1_aarch64.dmg` | open it and drag Icebox to Applications |
+| Windows | `msi/Icebox_0.4.0_x64_en-US.msi` | the one file to send; installs to Start menu with an uninstaller |
+| Linux   | `deb/Icebox_0.4.0_amd64.deb` | Debian/Ubuntu; also installs the udev rule for the devices |
+| Linux   | `rpm/Icebox-0.4.0-1.x86_64.rpm` | Fedora etc.; also installs the udev rule |
+| Linux   | `appimage/Icebox_0.4.0_amd64.AppImage` | any distro; install `linux/70-frostsnap.rules` by hand |
+| macOS   | `dmg/Icebox_0.4.0_aarch64.dmg` | open it and drag Icebox to Applications |
 
 For one Mac app that runs on both Apple Silicon and Intel, build with
 `rustup target add aarch64-apple-darwin x86_64-apple-darwin` and
