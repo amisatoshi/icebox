@@ -2,6 +2,12 @@
 
 [← Updating](11-updating.md) · [Contents](README.md) · Next: [FAQ →](faq.md)
 
+## Sending logs
+
+If you ask for help, the log usually shows what went wrong. Open **Help → Logs**, read it, then
+**Copy** it into an email or use **Show log file** to attach the file. See
+[Settings → Logs](10-settings.md#logs) for what it does and doesn't contain.
+
 ## Devices
 
 **No devices appear when I plug one in.**

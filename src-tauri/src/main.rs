@@ -9,7 +9,7 @@ use icebox_core::events::*;
 use icebox_core::{Event, Service};
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
-use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+use tauri::menu::{IconMenuItemBuilder, MenuBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager, State};
 
 /// The service, or the reason it failed to start (shown in the window).
@@ -51,8 +51,6 @@ fn app_info(app: tauri::AppHandle) -> CmdResult<AppInfo> {
     })
 }
 
-/// Opens a transaction on mempool.space in the user's browser. The page can't open arbitrary
-/// URLs: Icebox builds the link itself from the network and a checked txid.
 /// Opens an Icebox release page (from the About page's update check) in the browser. The page
 /// passes only a tag; the URL is built and checked here.
 #[tauri::command(async)]
@@ -71,6 +69,8 @@ fn decode_qr(width: usize, height: usize, data: String) -> CmdResult<Option<Stri
     icebox_core::decode_qr_frame(width, height, &data)
 }
 
+/// Opens a transaction on mempool.space in the user's browser. The page can't open arbitrary
+/// URLs: Icebox builds the link itself from the network and a checked txid.
 #[tauri::command(async)]
 fn open_tx(app: tauri::AppHandle, network: String, txid: String) -> CmdResult<()> {
     use tauri_plugin_opener::OpenerExt;
@@ -78,6 +78,104 @@ fn open_tx(app: tauri::AppHandle, network: String, txid: String) -> CmdResult<()
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|e| format!("couldn't open the browser: {e}"))
+}
+
+/// Opens one of Icebox's fixed help pages (user guide, bug report form) in the browser. The page
+/// passes a name, never a URL.
+#[tauri::command(async)]
+fn open_help(app: tauri::AppHandle, page: String) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let url = icebox_core::help_url(&page)?;
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| format!("couldn't open the browser: {e}"))
+}
+
+// ---------- logs ----------
+
+/// The log file: `logs/icebox.log` in the data folder. The previous run's log is kept as
+/// `icebox.log.1` once the file passes [`LOG_ROTATE_BYTES`].
+fn log_file(app: &tauri::AppHandle) -> CmdResult<PathBuf> {
+    Ok(resolve_data_dir(app)?.join("logs").join("icebox.log"))
+}
+
+const LOG_ROTATE_BYTES: u64 = 5 * 1024 * 1024;
+
+/// The end of the log, for the Logs page. The user's home folder is replaced with `~` so the
+/// text can be sent for troubleshooting without the account name in it.
+#[tauri::command(async)]
+fn read_logs(app: tauri::AppHandle) -> CmdResult<String> {
+    let path = log_file(&app)?;
+    let text = match std::fs::read(&path) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(format!("couldn't read the log: {e}")),
+    };
+    Ok(icebox_core::tidy_log(&text, home_dir().as_deref(), 2000))
+}
+
+/// Shows the log file in the system's file manager, so it can be attached to a message.
+#[tauri::command(async)]
+fn show_log_file(app: tauri::AppHandle) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = log_file(&app)?;
+    if !path.exists() {
+        return Err("there's no log file yet".into());
+    }
+    app.opener()
+        .reveal_item_in_dir(&path)
+        .map_err(|e| format!("couldn't open the folder: {e}"))
+}
+
+fn home_dir() -> Option<String> {
+    std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .ok()
+        .filter(|h| h.len() > 1)
+}
+
+/// Logs to the terminal and to the log file. Started in `setup`, once the data folder is known;
+/// if the file can't be opened, Icebox still runs and logs to the terminal only.
+fn init_logging(app: &tauri::AppHandle) {
+    use tracing_subscriber::fmt::writer::MakeWriterExt;
+    let filter = || {
+        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+            // nusb is noisy; electrum at warn is plenty
+            "info,nusb=error,bdk_electrum_streaming=warn".into()
+        })
+    };
+    let file = log_file(app).ok().and_then(|path| {
+        std::fs::create_dir_all(path.parent()?).ok()?;
+        if std::fs::metadata(&path)
+            .map(|m| m.len() > LOG_ROTATE_BYTES)
+            .unwrap_or(false)
+        {
+            let _ = std::fs::rename(&path, path.with_extension("log.1"));
+        }
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .ok()
+    });
+    match file {
+        Some(file) => {
+            tracing_subscriber::fmt()
+                .with_env_filter(filter())
+                .with_ansi(false)
+                .with_writer(std::io::stdout.and(std::sync::Mutex::new(file)))
+                .init();
+            tracing::info!(
+                version = env!("CARGO_PKG_VERSION"),
+                os = std::env::consts::OS,
+                "Icebox started"
+            );
+        }
+        None => {
+            tracing_subscriber::fmt().with_env_filter(filter()).init();
+            tracing::warn!("couldn't open the log file; logging to the terminal only");
+        }
+    }
 }
 
 /// Lets the keyboard shortcut Ctrl+Q quit on Windows, where the webview swallows menu shortcuts.
@@ -91,6 +189,11 @@ fn quit_app(app: tauri::AppHandle) {
 #[tauri::command(async)]
 fn erase_device(state: State<'_, AppState>, device_id: String) -> CmdResult<()> {
     service(&state)?.erase_device(&device_id).map_err(err)
+}
+
+#[tauri::command(async)]
+fn erase_devices(state: State<'_, AppState>, device_ids: Vec<String>) -> CmdResult<()> {
+    service(&state)?.erase_devices(&device_ids).map_err(err)
 }
 
 #[tauri::command(async)]
@@ -380,39 +483,147 @@ fn set_electrum_servers(
 }
 
 #[tauri::command(async)]
+fn restore_default_electrum(state: State<'_, AppState>, network: String) -> CmdResult<()> {
+    service(&state)?
+        .restore_default_electrum(&network)
+        .map_err(err)
+}
+
+// ---------- display ----------
+
+#[tauri::command(async)]
+fn hide_balance(state: State<'_, AppState>) -> CmdResult<bool> {
+    Ok(service(&state)?.hide_balance())
+}
+
+#[tauri::command(async)]
+fn set_hide_balance(state: State<'_, AppState>, hide: bool) -> CmdResult<()> {
+    service(&state)?.set_hide_balance(hide).map_err(err)
+}
+
+#[tauri::command(async)]
 fn reconnect(state: State<'_, AppState>, network: String) -> CmdResult<()> {
     service(&state)?.reconnect(&network).map_err(err)
+}
+
+/// A 32×32 RGBA menu icon from `icons/menu` (Lucide icons, ISC licence; see LICENSE-lucide.txt
+/// there). Windows and Linux draw them at 16×16.
+macro_rules! menu_icon {
+    ($name:literal) => {
+        tauri::image::Image::new(
+            include_bytes!(concat!("../icons/menu/", $name, ".rgba")),
+            32,
+            32,
+        )
+    };
 }
 
 /// The native menu bar. Quit is handled here; every other item is forwarded to the window as a
 /// `menu` event carrying the item id, and the UI decides what to show.
 fn build_menu(app: &tauri::App) -> tauri::Result<()> {
-    let item = |id: &str, text: &str, accel: Option<&str>| {
-        let mut b = MenuItemBuilder::with_id(id, text);
+    let item = |id: &str, text: &str, accel: Option<&str>, icon: tauri::image::Image<'static>| {
+        let mut b = IconMenuItemBuilder::with_id(id, text);
+        // Icons in a macOS menu bar look out of place there, so they're left off on macOS.
+        if !cfg!(target_os = "macos") {
+            b = b.icon(icon);
+        }
         if let Some(a) = accel {
             b = b.accelerator(a);
         }
         b.build(app)
     };
     let file = SubmenuBuilder::new(app, "File")
-        .item(&item("settings", "Settings", Some("CmdOrCtrl+,"))?)
+        .item(&item(
+            "settings",
+            "Settings",
+            Some("CmdOrCtrl+,"),
+            menu_icon!("settings"),
+        )?)
         .separator()
-        .item(&item("quit", "Quit Icebox", Some("CmdOrCtrl+Q"))?)
+        .item(&item(
+            "quit",
+            "Quit Icebox",
+            Some("CmdOrCtrl+Q"),
+            menu_icon!("power"),
+        )?)
         .build()?;
     let wallet = SubmenuBuilder::new(app, "Wallet")
-        .item(&item("new_wallet", "New wallet…", Some("CmdOrCtrl+N"))?)
-        .item(&item("restore", "Restore from devices…", None)?)
+        .item(&item(
+            "new_wallet",
+            "New multi-sig wallet…",
+            Some("CmdOrCtrl+N"),
+            menu_icon!("plus"),
+        )?)
+        .item(&item(
+            "restore",
+            "Restore from devices…",
+            None,
+            menu_icon!("rotate-ccw-clock"),
+        )?)
+        .item(&item(
+            "watch_add",
+            "Add watch-only wallet…",
+            None,
+            menu_icon!("eye"),
+        )?)
         .separator()
-        .item(&item("receive", "Receive", Some("CmdOrCtrl+R"))?)
-        .item(&item("send", "Send", Some("CmdOrCtrl+S"))?)
+        .item(&item(
+            "receive",
+            "Receive",
+            Some("CmdOrCtrl+R"),
+            menu_icon!("arrow-down-left"),
+        )?)
+        .item(&item(
+            "send",
+            "Send",
+            Some("CmdOrCtrl+S"),
+            menu_icon!("arrow-up-right"),
+        )?)
         .build()?;
     let view = SubmenuBuilder::new(app, "View")
-        .item(&item("devices", "Devices", Some("CmdOrCtrl+D"))?)
+        .item(&item(
+            "devices",
+            "Devices",
+            Some("CmdOrCtrl+D"),
+            menu_icon!("usb"),
+        )?)
+        .item(&item(
+            "hide_balances",
+            "Hide or show balances",
+            Some("CmdOrCtrl+B"),
+            menu_icon!("eye-off"),
+        )?)
         .build()?;
     let help = SubmenuBuilder::new(app, "Help")
-        .item(&item("demo", "Try demo mode", None)?)
+        .item(&item("guide", "User guide", None, menu_icon!("book-open"))?)
+        .item(&item(
+            "shortcuts",
+            "Keyboard shortcuts",
+            Some("CmdOrCtrl+/"),
+            menu_icon!("keyboard"),
+        )?)
+        .item(&item(
+            "demo",
+            "Try demo mode",
+            None,
+            menu_icon!("flask-conical"),
+        )?)
         .separator()
-        .item(&item("about", "About Icebox", None)?)
+        .item(&item(
+            "updates",
+            "Check for updates",
+            None,
+            menu_icon!("cloud-download"),
+        )?)
+        .item(&item("logs", "Logs", None, menu_icon!("scroll-text"))?)
+        .item(&item(
+            "report_bug",
+            "Report a bug",
+            None,
+            menu_icon!("bug"),
+        )?)
+        .separator()
+        .item(&item("about", "About Icebox", None, menu_icon!("info"))?)
         .build()?;
     let menu = MenuBuilder::new(app)
         .item(&file)
@@ -443,15 +654,6 @@ fn resolve_data_dir(app: &tauri::AppHandle) -> CmdResult<PathBuf> {
 }
 
 fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                // nusb is noisy; electrum at warn is plenty
-                "info,nusb=error,bdk_electrum_streaming=warn".into()
-            }),
-        )
-        .init();
-
     tauri::Builder::default()
         // Must be the first plugin: a second launch focuses the running window instead of
         // starting another copy that would fight it for the USB ports.
@@ -463,10 +665,12 @@ fn main() {
         }))
         // Remembers window size and position between launches.
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        // Used only from Rust (open_tx); the page has no opener permission.
+        // Used only from Rust (open_tx, open_help, show_log_file); the page has no opener
+        // permission.
         .plugin(tauri_plugin_opener::init())
         .manage(AppState(OnceLock::new()))
         .setup(|app| {
+            init_logging(app.handle());
             build_menu(app)?;
             let handle = app.handle().clone();
             let result = resolve_data_dir(&handle).and_then(|dir| {
@@ -490,6 +694,13 @@ fn main() {
             open_tx,
             quit_app,
             erase_device,
+            erase_devices,
+            open_help,
+            read_logs,
+            show_log_file,
+            hide_balance,
+            set_hide_balance,
+            restore_default_electrum,
             start_restore_scan,
             restore_candidates,
             restore_wallet,

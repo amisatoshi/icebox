@@ -319,4 +319,7 @@ pub struct ElectrumView {
     pub network: String,
     pub primary: String,
     pub backup: String,
+    /// The servers Icebox starts with (the official app's defaults), for "Restore defaults".
+    pub default_primary: String,
+    pub default_backup: String,
 }

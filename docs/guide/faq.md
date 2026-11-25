@@ -8,6 +8,18 @@ to Frostsnap devices, runs key generation and signing, and tracks your wallet. I
 Frostsnap's own open-source Rust code for all of that, with a different desktop interface and
 some extras (demo mode, BTCPay export, an address list). It isn't made or endorsed by Frostsnap.
 
+**Is it "multi-sig"?**
+In the sense people usually mean, yes: you choose how many of your devices must approve a payment
+(say 2 of 3), and no single device or computer can spend alone. Under the hood it's FROST, a
+threshold signature scheme: the devices produce **one** ordinary Taproot signature together, so on
+the blockchain it looks like a normal single-key wallet. That makes it cheaper and more private than
+classic on-chain multisig, and it's why Icebox and the official app call it "multi-sig wallet" even
+though tools like Sparrow see a single-key Taproot descriptor.
+
+**Can one Icebox manage several wallets?**
+Yes, any number, on any network. Each device holds one wallet, though (as in the official app),
+so a new wallet needs its own set of blank devices.
+
 **Is it safe?**
 Your private keys never leave the devices, and every payment must be approved on each device's
 own screen. But Icebox is **new and unaudited**. Use Signet first, keep mainnet amounts small,

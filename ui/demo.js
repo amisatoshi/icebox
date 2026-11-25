@@ -37,6 +37,7 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
   const previewNames = {};
   // Restore scan: which devices hold which (pretend) wallet shares.
   let scanning = false;
+  let hideBalance = false;
   const oldWallet = { name: "Old savings", network: "signet", threshold: 2, groupId: "demo-old:" + hex(64) };
   const heldBy = {};    // device id -> [{ groupId, name, network, threshold, share }]
   let savedRestores = []; // [{ restoration_id, groupId, name, network, threshold, devices: [{ id, share_number }] }]
@@ -105,7 +106,7 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
 
   const handlers = {
     startup_status: () => "ok",
-    app_info: () => ({ version: "0.2.0", frostsnap_rev: "233f93b6d4ad16552596fad4f80e7a44b9fe4c60", expected_firmware: "v0.4.0", data_dir: "(demo mode: nothing is saved)" }),
+    app_info: () => ({ version: "0.4.1", frostsnap_rev: "233f93b6d4ad16552596fad4f80e7a44b9fe4c60", expected_firmware: "v0.4.0", data_dir: "(demo mode: nothing is saved)" }),
     data_dir: () => "(demo mode: nothing is saved)",
     list_devices: () => devs,
     list_keys: () => keys,
@@ -197,6 +198,12 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
       return keyId;
     },
 
+    erase_devices: ({ deviceIds }) => {
+      deviceIds.forEach((id, i) => later(1500 + i * 900, () => {
+        const d = devs.find((d) => d.id === id);
+        if (d) { d.name = null; d.nonces = 0; d.ready = false; emitDevices(); later(900, () => { d.ready = true; emitDevices(); }); }
+      }));
+    },
     erase_device: ({ deviceId }) => {
       send({ kind: "erase", device_id: deviceId, confirmed: false });
       later(1500, () => {
@@ -304,7 +311,17 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
     },
     cancel_protocol: () => { scanning = false; },
 
-    electrum_servers: ({ network }) => ({ network, primary: "(demo: no server used)", backup: "(demo: no server used)" }),
+    electrum_servers: ({ network }) => ({ network, primary: "(demo: no server used)", backup: "(demo: no server used)", default_primary: "(demo: no server used)", default_backup: "(demo: no server used)" }),
+    restore_default_electrum: () => null,
+    hide_balance: () => hideBalance,
+    set_hide_balance: ({ hide }) => { hideBalance = !!hide; },
+    read_logs: () => [
+      "2026-11-25T10:00:00Z  INFO icebox: Icebox started version=\"(demo)\" os=\"demo\"",
+      "2026-11-25T10:00:01Z  INFO icebox_core::service: opening database path=~/demo/frostsnap.sqlite",
+      "2026-11-25T10:00:02Z  INFO icebox_core::service: device change (demo devices are simulated, so the real log isn't shown here)",
+    ].join("\n"),
+    show_log_file: () => { throw "Demo mode has no log file. Exit the demo to see Icebox's real log."; },
+    open_help: () => { throw "Demo mode doesn't open web pages."; },
     set_electrum_servers: () => { throw "Electrum settings can't be changed in demo mode"; },
     reconnect: () => {},
   };

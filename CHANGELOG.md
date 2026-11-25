@@ -6,6 +6,35 @@ All notable changes to Icebox are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-25
+
+### Added
+- **Hide amounts.** An eye button next to the balance, View → **Hide or show balances**
+  (Ctrl/⌘+B) and a Settings tick box show the balance, incoming amounts and history as `•••••`.
+  Stored with Frostsnap's own `hide_balance` setting, so it's remembered. Amounts on the Send page
+  stay visible.
+- **Logs.** Icebox now writes `logs/icebox.log` in the data folder (as well as the terminal), kept
+  to about 5 MB with the previous file as `icebox.log.1`. Help → **Logs** (or Settings → View logs)
+  shows the end of it with **Copy** and **Show log file**; the home folder is replaced with `~`.
+  Logging now starts once the data folder is known, at the start of `setup`.
+- **Restore defaults** for each network's Electrum servers (the official app's defaults, read from
+  `frostsnap_coordinator`), and **Restore all defaults**, which also shows amounts again.
+- **Erase several devices at once**, in a Danger zone at the bottom of the Devices page (the
+  official app keeps its "Erase multiple devices" behind Developer mode). Tick the devices, type
+  `ERASE`, then confirm on each device's screen; the page shows which have erased.
+- Help menu: **User guide**, **Keyboard shortcuts** (Ctrl/⌘+/), **Check for updates**, **Logs** and
+  **Report a bug**. Wallet menu: **Add watch-only wallet**. Help pages open from a fixed list in
+  Rust (`help_url`); the page only passes a name.
+- Menu icons on Windows and Linux ([Lucide](https://lucide.dev), ISC licence; notice in
+  `src-tauri/icons/menu/LICENSE-lucide.txt`). Left off on macOS, where menu bar icons look out of
+  place.
+
+### Changed
+- "New wallet" is now **New multi-sig wallet**, matching the official app's wording.
+- Restore progress reads "2 found · 3 needed to restore" instead of "2 of 3 needed", which looked
+  like a 2-of-3 wallet. The text explains that "needed" is the threshold, not the total.
+- Settings notes that the default servers are the same as the official app's.
+
 ## [0.4.0] - 2026-11-08
 
 ### Added
@@ -147,7 +176,8 @@ All notable changes to Icebox are recorded here. The format follows
   history over Electrum, receive with on-device address check, send with per-device signing and
   broadcast, watch-only descriptor, Electrum server settings.
 
-[Unreleased]: https://github.com/amisatoshi/icebox/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/amisatoshi/icebox/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/amisatoshi/icebox/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/amisatoshi/icebox/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/amisatoshi/icebox/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/amisatoshi/icebox/compare/v0.2.0...v0.3.0

@@ -31,7 +31,7 @@ you always know you're in the demo:
 
 ## A tour in ten minutes
 
-1. **Create a wallet.** Click **+ New wallet**, name it, keep **Signet**, name the three devices,
+1. **Create a wallet.** Click **+ New multi-sig wallet**, name it, keep **Signet**, name the three devices,
    choose **2 of 3**, and click **Create keys**. See [Create a wallet](04-create-wallet.md).
 2. **Back up.** Click **Show backup on device** for each one. In the demo it confirms itself
    after a moment.

@@ -224,3 +224,20 @@ textarea { font-family: var(--mono, ui-monospace, monospace); font-size: 13px; r
 .scanner-video { width: 100%; border-radius: 8px; background: #000; aspect-ratio: 4 / 3; object-fit: cover; }
 .row.nowrap { flex-wrap: nowrap; }
 .row.nowrap input { flex: 1; }
+
+/* hide amounts (eye button next to the balance) */
+.balance-row { align-items: center; gap: 10px; }
+.icon-btn { background: none; border: 1px solid transparent; border-radius: 8px; color: var(--muted); padding: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn:hover { color: var(--text); border-color: var(--line); background: var(--panel-2); }
+
+/* checkbox rows (settings, erase several devices) */
+.check-row { gap: 10px; cursor: pointer; }
+.check-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--ice); flex: none; }
+.danger-zone .list { margin: 10px 0; }
+.danger-zone .notice { margin: 10px 0; }
+
+/* logs */
+.log-box { min-height: 360px; max-height: 60vh; white-space: pre; overflow: auto; font-size: 12px; line-height: 1.45; margin-bottom: 12px; }
+
+/* keyboard shortcuts */
+kbd { font-family: var(--mono); font-size: 12.5px; background: var(--panel-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 2px 8px; color: var(--text); }
