@@ -9,7 +9,7 @@ the whole key. Spending later needs the number of devices you choose here.
 the official app, each device holds one wallet. A device that already has a name holds a wallet,
 and must be unplugged (or [erased](03-devices.md#erasing-a-device)) first.
 
-Click **+ New wallet** in the sidebar (or **Wallet → New wallet…**, or **Ctrl+N** / **⌘N**).
+Click **+ New multi-sig wallet** in the sidebar (or **Wallet → New multi-sig wallet…**, or **Ctrl+N** / **⌘N**).
 
 ## Step 1: name and network
 

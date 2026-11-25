@@ -67,6 +67,19 @@ as a new, blank device.
 
 Erasing a brand-new blank device does no harm: it just restarts as blank.
 
+### Erasing several devices at once
+
+To wipe a whole set (for example test devices you've finished with), open the **Danger zone** at
+the bottom of the Devices page and click **Show**:
+
+1. Tick the devices to erase. Next to each, Icebox says which wallet it holds a share of, if any.
+2. Type `ERASE` to confirm, then click **Erase *n* devices**.
+3. **Confirm on each device's own screen.** Each one is only erased once you confirm on it; the
+   list shows which have finished. **Cancel the rest** stops any you haven't confirmed yet.
+
+The same warning applies: only erase devices holding wallet shares if their backups are written
+down, or each wallet's other devices can still meet its threshold.
+
 **Removing a wallet from Icebox** is different from erasing: it only makes this computer forget
 the wallet. See [Remove a wallet](09-details-and-export.md#remove-a-wallet-from-icebox).
 

@@ -74,8 +74,8 @@ sending, restoring, backups, BTCPay Server and troubleshooting, with screenshots
 
 **New in 0.2:**
 
-- Menu bar: File (Settings, Quit), Wallet (New wallet, Receive, Send), View (Devices), Help
-  (Try demo mode, About), with keyboard shortcuts
+- Menu bar: File, Wallet, View and Help, with keyboard shortcuts (Help → Keyboard shortcuts lists
+  them)
 - **Demo mode** (Help → Try demo mode, or the button on an empty Devices page): pretend devices
   and test coins, so anyone can try the whole flow without hardware. Nothing touches real devices,
   wallets or the network, and leaving demo mode restarts the app clean.
@@ -84,7 +84,7 @@ sending, restoring, backups, BTCPay Server and troubleshooting, with screenshots
 - **Erase device**, confirmed on the device's own screen, with a warning if it holds a wallet share
 - **Restore from devices** (sidebar, or Wallet → Restore from devices): plug in a wallet's devices,
   together or one after another, and Icebox asks each which wallet shares it holds, groups them by
-  wallet ("Cold storage: 2 of 2 needed") and rebuilds the wallet in one click. Use it for wallets
+  wallet ("Cold storage: 2 found · 2 needed to restore") and rebuilds the wallet in one click. Use it for wallets
   made in the official app. Devices are only read; nothing on them changes. Uses the official
   `frostsnap_core` restoration code.
 - Wallets are labelled "2 to sign" rather than "2-of-3": a wallet restored from some of its devices
@@ -98,6 +98,18 @@ sending, restoring, backups, BTCPay Server and troubleshooting, with screenshots
 - Only one copy of Icebox runs at a time, and it remembers its window size and position
 - One wallet per device, as in the official app: new wallets use blank devices
 - Remove a wallet from Icebox (the devices keep their shares; restore it any time)
+
+**New in 0.4.1:**
+
+- **Hide amounts** with one click (the eye by the balance, View → Hide or show balances, or
+  Ctrl+B): balances and history show as `•••••` until you show them again
+- **Logs** (Help → Logs, or Settings): copy the log or open its file to send for troubleshooting.
+  No keys, backup words, addresses or amounts; your home folder is shown as `~`
+- **Restore defaults** for each network's Electrum servers, and **Restore all defaults**
+- **Erase several devices at once** (Devices → Danger zone), each confirmed on its own screen
+- Menus with icons (Windows and Linux), plus Help → User guide, Keyboard shortcuts, Check for
+  updates and Report a bug; "New wallet" is now "New multi-sig wallet"
+- Clearer restore progress: "2 found · 3 needed to restore"
 
 **New in 0.4:**
 

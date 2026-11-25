@@ -31,7 +31,7 @@ release's tag on GitHub.
 1. [Install Icebox](01-install.md), then close the official Frostsnap app if it's open (both want
    the USB port).
 2. No devices yet? Choose **Help → Try demo mode** and click around.
-3. Plug in your Frostsnap devices. Click **+ New wallet**, choose **Signet**, name each device,
+3. Plug in your Frostsnap devices. Click **+ New multi-sig wallet**, choose **Signet**, name each device,
    pick how many must sign (2 of 3 is a good start) and click **Create keys**.
 4. Check every device shows the same code, then **back up each device** on its own screen.
 5. **Receive**: get an address, click **Check on a device**, and compare.

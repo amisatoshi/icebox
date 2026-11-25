@@ -39,6 +39,9 @@ const state = {
   wizard: null,
   wallet: null,         // per-wallet page state
   settings: null,
+  hideBalance: false,   // amounts shown as dots (View → Hide or show balances, Ctrl+B)
+  eraseMany: null,      // Devices → Danger zone: { open, picked: Set, typed, sent: [ids] }
+  logs: null,           // Logs page: { text, loading }
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -98,6 +101,51 @@ function fmtBtc(n) {
   const sign = n < 0 ? "−" : "";
   return sign + (Math.abs(n) / 1e8).toFixed(8);
 }
+/** An amount that "Hide balances" covers: balances and payment history. Amounts the user is
+ *  entering or approving on the Send page stay visible, since hiding them there would be unsafe. */
+const HIDDEN = "•••••";
+const money = (text) => (state.hideBalance ? HIDDEN : text);
+
+async function toggleHideBalance() {
+  const hide = !state.hideBalance;
+  if (await call("set_hide_balance", { hide }) === undefined) return;
+  state.hideBalance = hide;
+  render();
+}
+
+/** The eye button that hides or shows amounts. */
+function hideBalanceButton() {
+  return h("button", {
+    class: "icon-btn", title: state.hideBalance ? "Show amounts (Ctrl+B)" : "Hide amounts (Ctrl+B)",
+    "aria-label": state.hideBalance ? "Show amounts" : "Hide amounts",
+    onclick: toggleHideBalance,
+  }, icon(state.hideBalance ? "eye-off" : "eye"));
+}
+
+// A few Lucide icons (ISC licence), drawn with DOM calls rather than HTML strings.
+const ICONS = {
+  eye: ["M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0", "c12,12,3"],
+  "eye-off": ["M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49", "M14.084 14.158a3 3 0 0 1-4.242-4.242", "M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143", "M2 2l20 20"],
+};
+function icon(name) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  for (const [k, v] of Object.entries({ viewBox: "0 0 24 24", width: 18, height: 18, fill: "none", stroke: "currentColor", "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" })) svg.setAttribute(k, v);
+  for (const part of ICONS[name] || []) {
+    let el;
+    if (part.startsWith("c")) {
+      const [cx, cy, r] = part.slice(1).split(",");
+      el = document.createElementNS(ns, "circle");
+      el.setAttribute("cx", cx); el.setAttribute("cy", cy); el.setAttribute("r", r);
+    } else {
+      el = document.createElementNS(ns, "path");
+      el.setAttribute("d", part);
+    }
+    svg.append(el);
+  }
+  return svg;
+}
+
 const later = (ms, fn) => setTimeout(fn, ms);
 
 /** "red", "red and blue", "red, blue and green" */
@@ -271,6 +319,8 @@ function renderView() {
     case "about": return renderAbout();
     case "restore": return renderRestore();
     case "watch_add": return renderWatchAdd();
+    case "logs": return renderLogs();
+    case "shortcuts": return renderShortcuts();
     default: return renderDevices();
   }
 }
@@ -295,14 +345,14 @@ async function enterDemo() {
   Object.assign(state, {
     devices: [], keys: [], chain: {}, nonces: null, keygen: null, verify: null, backup: null,
     signing: {}, wizard: null, wallet: null, settings: null, erase: null, startupError: null,
-    restore: null, restoreScanning: false, savedRestores: [], watchOnly: [],
+    restore: null, restoreScanning: false, savedRestores: [], watchOnly: [], eraseMany: null, logs: null,
   });
   const [devices, keys] = await Promise.all([call("list_devices"), call("list_keys")]);
   state.devices = devices || [];
   state.keys = keys || [];
   state.view = { name: "devices" };
   render();
-  toast("Demo mode: three pretend devices are plugged in. Try New wallet.");
+  toast("Demo mode: three pretend devices are plugged in. Try New multi-sig wallet.");
 }
 
 function exitDemo() {
@@ -338,7 +388,7 @@ async function refreshRestore() {
 
 const RESTORE_STATUS = {
   ready: "Enough devices found. Ready to restore.",
-  need_more: "Plug in more of this wallet's devices.",
+  need_more: "Plug in more of this wallet's devices. \"Needed\" is the wallet's threshold (3 for a 3-of-5), not how many devices it has; once it's restored, its other devices can be added too.",
   already_here: "Already in Icebox.",
   not_bitcoin: "Not a bitcoin wallet. Icebox can't restore this yet.",
   unknown_threshold: "These devices don't say how many are needed. Try restoring; Icebox will tell you if more are needed.",
@@ -349,10 +399,10 @@ async function refreshSavedRestores() {
   if (list) { state.savedRestores = list; render(); }
 }
 
-/** "1 of 2 devices" for a saved restore. */
+/** "1 found · 2 needed to restore" for a saved restore. */
 function savedCount(r) {
   if (r.found === null || r.found === undefined) return "checking which devices fit";
-  return r.threshold ? `${r.found} of ${r.threshold} devices` : `${r.found} device${r.found === 1 ? "" : "s"}`;
+  return r.threshold ? `${r.found} found · ${r.threshold} needed to restore` : `${r.found} device${r.found === 1 ? "" : "s"} found`;
 }
 
 function renderSavedRestore(r) {
@@ -366,7 +416,7 @@ function renderSavedRestore(r) {
         r.network ? h("span", { class: "pill" + (r.network === "bitcoin" ? " main" : ""), text: networkLabel(r.network) }) : null,
         h("span", { class: "pill warn", text: "saved restore" }),
       ),
-      h("strong", { text: r.restorable ? "Ready" : savedCount(r) + (need ? " needed" : "") }),
+      h("strong", { text: r.restorable ? "Ready" : savedCount(r) }),
     ),
     need ? h("div", { class: "meter" }, h("span", { style: `width:${r.restorable ? 100 : pct}%` })) : null,
     h("div", { class: "list" },
@@ -463,7 +513,7 @@ function renderRestore() {
           h("h2", { text: c.name }),
           c.network ? h("span", { class: "pill" + (c.network === "bitcoin" ? " main" : ""), text: networkLabel(c.network) }) : null,
         ),
-        h("strong", { text: need ? (c.found >= need ? `${c.found} found · ${need} needed` : `${c.found} of ${need} needed`) : `${c.found} found` }),
+        h("strong", { text: need ? `${c.found} found · ${need} needed to restore` : `${c.found} found` }),
       ),
       need ? h("div", { class: "meter" }, h("span", { style: `width:${pct}%` })) : null,
       h("div", { class: "list" },
@@ -704,7 +754,90 @@ function renderDevices() {
       }, "Top up nonces on plugged-in devices"),
     ),
   ));
+  page.append(renderDangerZone());
   return page;
+}
+
+// Danger zone: erase several devices at once, like the official app's "Erase multiple devices"
+// (which it keeps behind Developer mode). Closed until opened, and needs ERASE typed to confirm.
+// Each device still asks for confirmation on its own screen.
+function renderDangerZone() {
+  const z = state.eraseMany;
+  const box = h("div", { class: "danger-zone" });
+  const add = (...parts) => box.append(...parts.filter((x) => x !== null && x !== undefined && x !== false));
+  if (!z || !z.open) {
+    add(
+      h("div", { class: "row between" },
+        h("h3", { text: "Danger zone" }),
+        h("button", { class: "btn small ghost", onclick: () => { state.eraseMany = { open: true, picked: new Set(), typed: "", sent: null }; render(); } }, "Show"),
+      ),
+    );
+    return box;
+  }
+  add(h("div", { class: "row between" },
+    h("h3", { text: "Danger zone: erase several devices" }),
+    h("button", { class: "btn small ghost", onclick: () => { if (z.sent) call("clear_device_screens"); state.eraseMany = null; render(); } }, z.sent ? "Close" : "Hide"),
+  ));
+
+  if (z.sent) {
+    // A device that has erased restarts: it drops off the list (noted in onEvent) and comes back
+    // blank, with no name.
+    const status = (id) => {
+      const d = state.devices.find((x) => x.id === id);
+      return !d || z.gone.has(id) || (z.names[id] && !d.name) ? "done" : "waiting";
+    };
+    const left = z.sent.filter((id) => status(id) === "waiting").length;
+    add(
+      h("p", { text: left ? `Confirm on each device's own screen. Nothing is erased on a device until you confirm there. ${left} still to confirm.` : "All chosen devices have erased and restarted blank." }),
+      h("div", { class: "list" }, ...z.sent.map((id) => h("div", { class: "item" },
+        h("span", { text: z.names[id] || "New device " + shortId(id) }),
+        status(id) === "waiting" ? h("span", { class: "pill warn", text: "confirm on device" }) : h("span", { class: "pill ok", text: "erased" }),
+      ))),
+      left ? h("div", { class: "row" }, h("button", { class: "btn ghost", onclick: () => { call("clear_device_screens"); state.eraseMany = null; render(); } }, "Cancel the rest")) : null,
+    );
+    return box;
+  }
+
+  const ready = state.devices.filter((d) => d.ready);
+  if (!ready.length) {
+    add(h("p", { class: "muted", text: "Plug in the devices you want to erase." }));
+    return box;
+  }
+  const holdings = (id) => state.keys.filter((k) => k.devices.some((kd) => kd.id === id));
+  const picked = ready.filter((d) => z.picked.has(d.id));
+  const held = [...new Set(picked.flatMap((d) => holdings(d.id).map((k) => k.name)))];
+  add(
+    h("p", { class: "muted small", text: "Wipes everything on the chosen devices: their names and every wallet share they hold. They restart as new devices. To forget a wallet on this computer without touching any device, use Remove wallet on the wallet's Details tab instead." }),
+    h("div", { class: "list" }, ...ready.map((d) => {
+      const hs = holdings(d.id);
+      return h("label", { class: "item check-row" },
+        h("span", { class: "row" },
+          h("input", { type: "checkbox", checked: z.picked.has(d.id), onchange: (e) => { if (e.target.checked) z.picked.add(d.id); else z.picked.delete(d.id); render(); } }),
+          h("span", { text: d.name || "New device (not set up)" }),
+        ),
+        h("span", { class: "muted small", text: hs.length ? `holds a share of ${hs.map((k) => `"${k.name}"`).join(", ")}` : (d.name ? "no wallet in Icebox" : "blank") }),
+      );
+    })),
+    held.length ? h("div", { class: "notice bad", text: `The chosen devices hold shares of ${listJoin(held.map((n) => `"${n}"`))}. Only continue if every one of those devices has its backup written down, or each wallet's other devices can still meet its threshold.` }) : null,
+    h("label", { class: "field" }, "Type ERASE to confirm",
+      h("input", { id: "erase-many-confirm", type: "text", value: z.typed, spellcheck: "false", autocomplete: "off", oninput: (e) => { z.typed = e.target.value; render(); } }),
+    ),
+    h("div", { class: "row" },
+      h("button", {
+        class: "btn danger",
+        disabled: !picked.length || z.typed.trim() !== "ERASE",
+        onclick: async () => {
+          const ids = picked.map((d) => d.id);
+          if (await call("erase_devices", { deviceIds: ids }) === undefined) return;
+          z.names = Object.fromEntries(picked.map((d) => [d.id, d.name || ""]));
+          z.gone = new Set();
+          z.sent = ids;
+          render();
+        },
+      }, picked.length ? `Erase ${picked.length} device${picked.length === 1 ? "" : "s"}` : "Choose devices to erase"),
+    ),
+  );
+  return box;
 }
 
 // On Linux, a device whose screen is on but that isn't listed almost always means the USB rule
@@ -778,7 +911,7 @@ function renderWizard() {
   const page = h("div", { class: "page" },
     h("div", { class: "page-head" },
       h("div", {},
-        h("h1", { text: "New wallet" }),
+        h("h1", { text: "New multi-sig wallet" }),
         h("p", { class: "sub", text: "Your devices create the keys together. No single device, and not this computer, ever holds the whole key." }),
       ),
     ),
@@ -1125,9 +1258,12 @@ function renderWallet() {
         ),
       ),
       h("div", { class: "stack" },
-        h("div", { class: "balance" }, data ? fmtBtc(data.balance) : "—", h("span", { class: "unit", text: "BTC" })),
+        h("div", { class: "row balance-row" },
+          h("div", { class: "balance" }, data ? money(fmtBtc(data.balance)) : "—", h("span", { class: "unit", text: "BTC" })),
+          hideBalanceButton(),
+        ),
         data && data.pending_incoming
-          ? h("span", { class: "muted small", text: `+ ${fmtSats(data.pending_incoming)} incoming, unconfirmed` })
+          ? h("span", { class: "muted small", text: `+ ${money(fmtSats(data.pending_incoming))} incoming, unconfirmed` })
           : null,
       ),
     ),
@@ -1185,7 +1321,7 @@ const STALE_PENDING_SECS = 14 * 24 * 3600;
 function renderHistory(w) {
   const txs = (w.data && w.data.txs) || [];
   const replaced = (w.replaced || []).map((r) => h("div", { class: "notice warn" },
-    `An incoming payment of ${fmtSats(r.amount)} that hadn't confirmed was replaced by its sender (for example to change its fee or amount). `,
+    `An incoming payment of ${money(fmtSats(r.amount))} that hadn't confirmed was replaced by its sender (for example to change its fee or amount). `,
     "That's normal on Bitcoin: wait for the replacement to confirm. ",
     h("button", { class: "link", onclick: () => { w.replaced = w.replaced.filter((x) => x !== r); render(); } }, "Dismiss"),
   ));
@@ -1206,7 +1342,7 @@ function renderHistory(w) {
         ...txs.map((tx) => h("tr", {},
           h("td", { text: fmtTime(tx.timestamp) }),
           h("td", {}, txLink(w.data.network, tx.txid)),
-          h("td", { class: "num " + (tx.net_value > 0 ? "pos" : "neg"), text: tx.net_value === null ? "—" : (tx.net_value > 0 ? "+" : "") + fmtSats(tx.net_value) }),
+          h("td", { class: "num " + (tx.net_value > 0 ? "pos" : "neg"), text: tx.net_value === null ? "—" : money((tx.net_value > 0 ? "+" : "") + fmtSats(tx.net_value)) }),
           h("td", {}, h("span", {
             class: "pill" + (tx.confirmations >= 1 ? " ok" : stale(tx) ? " bad" : " warn"),
             text: tx.confirmations >= 1 ? `${tx.confirmations} conf` : stale(tx) ? "may never confirm" : "pending",
@@ -1880,7 +2016,7 @@ const NETWORKS = ["bitcoin", "signet", "testnet", "regtest"];
 
 async function openSettings() {
   state.view = { name: "settings" };
-  state.settings = { servers: {}, dataDir: null };
+  state.settings = { servers: {}, dataDir: null, resetting: false };
   render();
   const [dataDir, ...servers] = await Promise.all([
     call("data_dir"),
@@ -1891,6 +2027,78 @@ async function openSettings() {
   render();
 }
 
+async function restoreDefaultServers(networks, quiet) {
+  const st = state.settings;
+  for (const network of networks) {
+    if (await call("restore_default_electrum", { network }) === undefined) return;
+    const s = await call("electrum_servers", { network });
+    if (s && st) st.servers[network] = s;
+  }
+  toast(quiet ? "Settings back to the defaults" : `${networkLabel(networks[0])} servers back to the defaults`);
+  render();
+}
+
+// ---------------------------------------------------------------------------------------------
+// logs and keyboard shortcuts
+// ---------------------------------------------------------------------------------------------
+
+async function openLogs() {
+  state.view = { name: "logs" };
+  state.logs = { text: null };
+  render();
+  const text = await call("read_logs");
+  state.logs = { text: text === undefined ? "" : text || "" };
+  render();
+  const box = $("log-text");
+  if (box) box.scrollTop = box.scrollHeight;
+}
+
+function renderLogs() {
+  const l = state.logs || { text: null };
+  return h("div", { class: "page" },
+    h("div", { class: "page-head" }, h("div", {},
+      h("h1", { text: "Logs" }),
+      h("p", { class: "sub", text: "What Icebox has been doing: devices plugging in, server connections, errors. Useful when reporting a problem." }),
+    )),
+    h("div", { class: "notice", text: "Logs never contain backup words or keys, and don't list your addresses or amounts. They can include device and wallet ids, server names and the ids of payments you sent, so read them before sharing, and only send them to someone you trust (e.g. by email to the Icebox maintainer, not in a public issue)." }),
+    h("div", { class: "card" },
+      l.text === null
+        ? h("p", { class: "muted", text: "Loading…" })
+        : h("textarea", { id: "log-text", class: "log-box mono", readonly: true, spellcheck: "false", value: l.text || "The log is empty." }),
+      h("div", { class: "row" },
+        h("button", { class: "btn small", disabled: !l.text, onclick: () => navigator.clipboard.writeText(l.text).then(() => toast("Log copied")) }, "Copy"),
+        h("button", { class: "btn small", onclick: () => call("show_log_file") }, "Show log file"),
+        h("button", { class: "btn small ghost", onclick: openLogs }, "Refresh"),
+        h("button", { class: "btn small ghost", onclick: () => openHelp("bug") }, "Report a bug"),
+      ),
+    ),
+  );
+}
+
+const SHORTCUT_LIST = [
+  ["N", "New multi-sig wallet"], ["R", "Receive"], ["S", "Send"], ["D", "Devices"],
+  ["B", "Hide or show balances"], [",", "Settings"], ["/", "Keyboard shortcuts"], ["Q", "Quit Icebox"],
+];
+
+function renderShortcuts() {
+  const mod = /Mac/.test(navigator.platform || navigator.userAgent || "") ? "⌘" : "Ctrl+";
+  return h("div", { class: "page" },
+    h("div", { class: "page-head" }, h("div", {}, h("h1", { text: "Keyboard shortcuts" }))),
+    h("div", { class: "card" }, h("div", { class: "list" },
+      ...SHORTCUT_LIST.map(([key, what]) => h("div", { class: "item" },
+        h("span", { text: what }),
+        h("kbd", { text: mod + key }),
+      )),
+    )),
+  );
+}
+
+/** Opens a fixed help page in the browser (the URL is built in Rust). Works in demo mode too. */
+function openHelp(page) {
+  const run = tauri ? tauri.core.invoke("open_help", { page }) : invoke("open_help", { page });
+  Promise.resolve(run).catch((e) => toast(String(e), true));
+}
+
 function renderSettings() {
   const st = state.settings || { servers: {} };
   const page = h("div", { class: "page" },
@@ -1898,7 +2106,7 @@ function renderSettings() {
   );
   const card = h("div", { class: "card" },
     h("h2", { text: "Electrum servers" }),
-    h("p", { class: "muted", text: "Where Icebox reads the blockchain. For the most privacy, point mainnet at your own node, e.g. tcp://umbrel.local:50001 or ssl://your-node:50002." }),
+    h("p", { class: "muted", text: "Where Icebox reads the blockchain. For the most privacy, point mainnet at your own node, e.g. tcp://umbrel.local:50001 or ssl://your-node:50002. The defaults are the same servers the official Frostsnap app uses." }),
   );
   for (const network of NETWORKS) {
     const s = st.servers[network];
@@ -1923,10 +2131,42 @@ function renderSettings() {
           },
         }, "Save"),
         h("button", { class: "btn small ghost", onclick: () => call("reconnect", { network }) }, "Reconnect"),
+        s.default_primary !== undefined
+          ? h("button", {
+            class: "btn small ghost",
+            title: `Primary ${s.default_primary}, backup ${s.default_backup}`,
+            onclick: () => restoreDefaultServers([network]),
+          }, "Restore defaults")
+          : null,
       ),
     ));
   }
   page.append(card);
+  page.append(h("div", { class: "card" },
+    h("h2", { text: "Privacy" }),
+    h("label", { class: "row check-row" },
+      h("input", { type: "checkbox", checked: state.hideBalance, onchange: toggleHideBalance }),
+      h("span", { text: "Hide amounts (balances and payment history show as •••••). Also View → Hide or show balances, or Ctrl+B." }),
+    ),
+  ));
+  page.append(h("div", { class: "card" },
+    h("h2", { text: "Troubleshooting" }),
+    h("p", { class: "muted", text: "Icebox keeps a log of what it did (devices, server connections, errors). If something goes wrong, the log helps work out why." }),
+    h("div", { class: "row" }, h("button", { class: "btn small", onclick: openLogs }, "View logs")),
+  ));
+  page.append(h("div", { class: "card" },
+    h("h2", { text: "Restore default settings" }),
+    h("p", { class: "muted", text: "Puts every network's Electrum servers back to the defaults and shows amounts again. Wallets, devices and saved restores aren't touched." }),
+    h("div", { class: "row" }, h("button", {
+      class: "btn small", disabled: st.resetting,
+      onclick: async () => {
+        st.resetting = true; render();
+        await restoreDefaultServers(NETWORKS.filter((n) => st.servers[n]), true);
+        if (state.hideBalance) await toggleHideBalance();
+        st.resetting = false; render();
+      },
+    }, st.resetting ? "Restoring…" : "Restore all defaults")),
+  ));
   page.append(h("div", { class: "card" },
     h("h2", { text: "Data" }),
     h("p", { class: "muted", text: "Wallet data lives in this folder. It contains no private keys (those stay on the devices), but it does reveal your addresses and history. Set ICEBOX_DATA_DIR to use a different folder." }),
@@ -1943,6 +2183,9 @@ function onEvent(e) {
   switch (e.kind) {
     case "devices":
       state.devices = e.devices;
+      if (state.eraseMany && state.eraseMany.sent) {
+        for (const id of state.eraseMany.sent) if (!e.devices.some((d) => d.id === id)) state.eraseMany.gone.add(id);
+      }
       break;
     case "watch_only":
       state.watchOnly = e.wallets || [];
@@ -2027,15 +2270,22 @@ function onMenu(id) {
     case "devices": state.view = { name: "devices" }; return render();
     case "receive": return needWallet("receive");
     case "send": return needWallet("send");
+    case "watch_add": return openWatchAdd();
+    case "hide_balances": return toggleHideBalance();
     case "demo": return enterDemo();
     case "about": return openAbout();
+    case "updates": return openAbout().then(checkForUpdates);
+    case "logs": return openLogs();
+    case "shortcuts": state.view = { name: "shortcuts" }; return render();
+    case "guide": return openHelp("guide");
+    case "report_bug": return openHelp("bug");
   }
 }
 
 // Keyboard shortcuts. On Windows the webview has keyboard focus and swallows the menu's own
 // shortcuts, so the page handles them too. lastMenu stops a double action on systems where both
 // the menu and the page see the key.
-const SHORTCUTS = { n: "new_wallet", r: "receive", s: "send", d: "devices", ",": "settings", q: "quit" };
+const SHORTCUTS = { n: "new_wallet", r: "receive", s: "send", d: "devices", b: "hide_balances", ",": "settings", "/": "shortcuts", q: "quit" };
 let lastMenu = { id: null, at: 0 };
 
 function runMenu(id) {
@@ -2088,6 +2338,7 @@ async function main() {
   state.appInfo = await call("app_info");
   state.savedRestores = (await call("saved_restores")) || [];
   state.watchOnly = (await call("watch_only_wallets")) || [];
+  state.hideBalance = (await call("hide_balance")) === true;
   state.ready = true;
   if (state.keys.length) openWallet(state.keys[0].key_id);
   else render();

@@ -20,7 +20,8 @@ be in the same place at the same time; see
 1. Click **Restore from devices** in the sidebar (or **Wallet → Restore from devices…**).
 2. Plug in the wallet's devices, chained together or one after another.
 3. Icebox groups the devices by wallet and shows how many it has found against how many are
-   needed, e.g. "2 found · 2 needed".
+   needed to restore, e.g. "2 found · 2 needed to restore". "Needed" is the wallet's threshold
+   (3 for a 3-of-5), not how many devices the wallet has.
 4. When it says **Enough devices found. Ready to restore.**, click **Restore *wallet name***.
 
 Wallets already in Icebox show **Already in Icebox** with an **Open wallet** button.
@@ -38,7 +39,7 @@ This works the same way as in the official app. *(New in Icebox 0.3.)*
 **At the first place:**
 
 1. Open **Restore from devices** and plug in the first device.
-2. The wallet appears with, for example, "1 of 2 needed". Click **Save and continue later**.
+2. The wallet appears with, for example, "1 found · 2 needed to restore". Click **Save and continue later**.
 
 ![The first device found: save the restore to continue later](img/20-restore-first-device.png)
 

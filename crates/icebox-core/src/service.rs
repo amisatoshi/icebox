@@ -19,7 +19,8 @@ use anyhow::{anyhow, Context as _, Result};
 use frostsnap_coordinator::backup_run::BackupState;
 use frostsnap_coordinator::bdk_chain::bitcoin::{self, Address, Network};
 use frostsnap_coordinator::bitcoin::chain_sync::{
-    ChainClient, ChainStatus, ChainStatusState, ElectrumConfig, SUPPORTED_NETWORKS,
+    default_backup_electrum_server, default_electrum_server, ChainClient, ChainStatus,
+    ChainStatusState, ElectrumConfig, SUPPORTED_NETWORKS,
 };
 use frostsnap_coordinator::bitcoin::send::SendPlan;
 use frostsnap_coordinator::bitcoin::tofu::trusted_certs::TrustedCertificates;
@@ -513,6 +514,34 @@ impl Service {
             }),
         );
         self.start_protocol(protocol);
+        Ok(())
+    }
+
+    /// Asks several devices to wipe themselves at once, as the official app's "Erase multiple
+    /// devices" does. Each device asks for confirmation on its own screen and restarts blank once
+    /// confirmed; until then nothing is erased. Anything else the devices were doing is
+    /// cancelled first.
+    pub fn erase_devices(&self, device_ids: &[String]) -> Result<()> {
+        if device_ids.is_empty() {
+            return Err(anyhow!("choose at least one device to erase"));
+        }
+        let ids: Vec<DeviceId> = device_ids
+            .iter()
+            .map(|s| parse_device(s))
+            .collect::<Result<_>>()?;
+        {
+            let list = self.0.device_list.lock().unwrap();
+            if ids
+                .iter()
+                .any(|id| !list.get(*id).map(|d| d.ready).unwrap_or(false))
+            {
+                return Err(anyhow!("a device you chose isn't plugged in any more"));
+            }
+        }
+        self.cancel_protocol();
+        for id in ids {
+            self.0.usb_sender.erase_device_data(id);
+        }
         Ok(())
     }
 
@@ -2117,7 +2146,38 @@ impl Service {
             network: network.to_string(),
             primary: settings.get_electrum_server(network),
             backup: settings.get_backup_electrum_server(network),
+            default_primary: default_electrum_server(network).to_string(),
+            default_backup: default_backup_electrum_server(network).to_string(),
         })
+    }
+
+    /// Puts a network's servers back to the defaults, the same ones the official app uses.
+    pub fn restore_default_electrum(&self, network: &str) -> Result<()> {
+        let net = parse_network(network)?;
+        self.set_electrum_servers(
+            network,
+            default_electrum_server(net),
+            default_backup_electrum_server(net),
+        )
+    }
+
+    // =====================================================================================
+    // Display
+    // =====================================================================================
+
+    /// Whether amounts are hidden (shown as dots). Stored with the official app's own setting.
+    pub fn hide_balance(&self) -> bool {
+        self.0.settings.lock().unwrap().hide_balance
+    }
+
+    pub fn set_hide_balance(&self, hide: bool) -> Result<()> {
+        let mut settings = self.0.settings.lock().unwrap();
+        let mut db = self.0.db.lock().unwrap();
+        settings.mutate2(&mut *db, |settings, update| {
+            settings.set_hide_balance(hide, update);
+            Ok(())
+        })?;
+        Ok(())
     }
 
     /// Sets the Electrum servers for a network. Use `ssl://host:port` or, for a node on your

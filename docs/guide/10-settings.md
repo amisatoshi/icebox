@@ -33,6 +33,41 @@ Server addresses always start with `ssl://` or `tcp://`, then `host:port`.
 > a **self-signed** certificate (it's on the [roadmap](../../ROADMAP.md)), so use `tcp://` on your
 > own network, or a server with a proper certificate.
 
+### Going back to the defaults
+
+Each network has a **Restore defaults** button, which puts its Primary and Backup back to the
+default servers (hover over it to see which). **Restore all defaults**, further down, does every
+network at once and also turns **Hide amounts** off. Neither touches your wallets, devices or saved
+restores.
+
+| Network | Default primary | Default backup |
+|---------|-----------------|----------------|
+| Mainnet | `ssl://blockstream.info:700` | `ssl://electrum.acinq.co:50002` |
+| Signet | `tcp://signet.musdomworks.com:50001` | `ssl://mempool.space:60602` |
+| Testnet | `tcp://electrum.blockstream.info:60001` | `ssl://blockstream.info:993` |
+| Regtest | `tcp://localhost:60401` | `tcp://127.0.0.1:51001` |
+
+## Privacy: hide amounts
+
+Tick **Hide amounts** (or press **Ctrl+B** / **⌘B**, or click the eye next to a wallet's balance)
+to show the balance, incoming amounts and payment history as `•••••`. Handy when someone can see
+your screen, or when sharing it on a call. Icebox remembers the choice until you turn it off.
+
+Amounts on the **Send** page stay visible: you need to see what you're about to approve.
+
+## Logs
+
+Icebox keeps a log of what it does: devices plugging in, server connections, errors. If something
+goes wrong, the log helps work out why. Open it from **Settings → View logs** or **Help → Logs**:
+
+- **Copy** puts the log on the clipboard, to paste into an email.
+- **Show log file** opens the folder holding it (`logs/icebox.log` in the data folder), so you can
+  attach the file instead.
+
+The log never contains backup words or keys, and doesn't list addresses or amounts. It can contain
+device and wallet ids, server names and the ids of payments you've sent, and your home folder is
+shown as `~`. Read it before sharing, and send it privately rather than posting it in a public issue.
+
 ## Data folder
 
 The **Data** section shows where Icebox keeps its wallet database. It holds **no private keys**
@@ -63,12 +98,19 @@ Use **Ctrl** on Windows and Linux, **⌘** on macOS.
 |------|------|----------|
 | File | Settings | Ctrl/⌘ + , |
 | File | Quit Icebox | Ctrl/⌘ + Q |
-| Wallet | New wallet… | Ctrl/⌘ + N |
+| Wallet | New multi-sig wallet… | Ctrl/⌘ + N |
 | Wallet | Restore from devices… | |
+| Wallet | Add watch-only wallet… | |
 | Wallet | Receive | Ctrl/⌘ + R |
 | Wallet | Send | Ctrl/⌘ + S |
 | View | Devices | Ctrl/⌘ + D |
+| View | Hide or show balances | Ctrl/⌘ + B |
+| Help | User guide (opens this guide in your browser) | |
+| Help | Keyboard shortcuts | Ctrl/⌘ + / |
 | Help | Try demo mode | |
+| Help | Check for updates | |
+| Help | Logs | |
+| Help | Report a bug (opens the bug report form on GitHub) | |
 | Help | About Icebox | |
 
 Receive and Send open the wallet you're looking at (or your first wallet).

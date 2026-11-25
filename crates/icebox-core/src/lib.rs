@@ -92,6 +92,38 @@ pub fn release_url(tag: &str) -> Result<String, String> {
     ))
 }
 
+/// One of Icebox's fixed help pages: `guide` (the user guide) or `bug` (the bug report form).
+/// Like [`release_url`], the page passes a name and never a URL.
+pub fn help_url(page: &str) -> Result<String, String> {
+    let path = match page.trim() {
+        "guide" => "blob/main/docs/guide/README.md",
+        "bug" => "issues/new?template=bug_report.yml",
+        _ => return Err("unknown help page".into()),
+    };
+    Ok(format!("https://github.com/amisatoshi/icebox/{path}"))
+}
+
+/// The last `max_lines` lines of a log, with the user's home folder shown as `~` (it usually
+/// contains their account name, which a log sent for troubleshooting doesn't need).
+pub fn tidy_log(text: &str, home: Option<&str>, max_lines: usize) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let tail = lines[lines.len().saturating_sub(max_lines)..].join("\n");
+    match home {
+        Some(home) if home.len() > 1 => {
+            // Paths can appear as written or with escaped backslashes ("C:\\Users\\..."), as
+            // Debug formatting writes them.
+            let escaped = home.replace('\\', "\\\\");
+            let tail = if escaped != home {
+                tail.replace(&escaped, "~")
+            } else {
+                tail
+            };
+            tail.replace(home, "~")
+        }
+        _ => tail,
+    }
+}
+
 /// Largest camera frame accepted for QR decoding (pixels), to bound the work per frame.
 const MAX_QR_FRAME: usize = 1920 * 1080;
 
@@ -182,6 +214,37 @@ mod tests {
         ] {
             assert!(release_url(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn help_links_are_fixed() {
+        assert_eq!(
+            help_url("guide").unwrap(),
+            "https://github.com/amisatoshi/icebox/blob/main/docs/guide/README.md"
+        );
+        assert!(help_url("bug").unwrap().contains("/issues/new"));
+        for bad in ["", "https://evil.example", "../guide", "Guide"] {
+            assert!(help_url(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn logs_keep_the_end_and_hide_the_home_folder() {
+        let log = "one\ntwo /home/sam/.local/share/icebox\nthree\n";
+        assert_eq!(
+            tidy_log(log, Some("/home/sam"), 2),
+            "two ~/.local/share/icebox\nthree"
+        );
+        assert_eq!(
+            tidy_log(log, None, 10),
+            "one\ntwo /home/sam/.local/share/icebox\nthree"
+        );
+        let win = r#"path="C:\\Users\\sam\\AppData" and C:\Users\sam\AppData"#;
+        assert_eq!(
+            tidy_log(win, Some(r"C:\Users\sam"), 5),
+            r#"path="~\\AppData" and ~\AppData"#
+        );
+        assert_eq!(tidy_log("", Some("/home/sam"), 5), "");
     }
 
     #[test]
