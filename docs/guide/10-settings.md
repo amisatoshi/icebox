@@ -37,8 +37,8 @@ Server addresses always start with `ssl://` or `tcp://`, then `host:port`.
 
 Each network has a **Restore defaults** button, which puts its Primary and Backup back to the
 default servers (hover over it to see which). **Restore all defaults**, further down, does every
-network at once and also turns **Hide amounts** off. Neither touches your wallets, devices or saved
-restores.
+network at once, turns **Hide amounts** off and switches prices off. Neither touches your wallets,
+devices, labels or saved restores.
 
 | Network | Default primary | Default backup |
 |---------|-----------------|----------------|
@@ -46,6 +46,31 @@ restores.
 | Signet | `tcp://signet.musdomworks.com:50001` | `ssl://mempool.space:60602` |
 | Testnet | `tcp://electrum.blockstream.info:60001` | `ssl://blockstream.info:993` |
 | Regtest | `tcp://localhost:60401` | `tcp://127.0.0.1:51001` |
+
+## Prices
+
+*New in 0.5.* Icebox can show what your balance and payments are worth in your currency. It's
+**off until you switch it on**, because fetching a price tells the price server that someone at
+your internet address uses a Bitcoin wallet. Nothing about the wallet itself is sent.
+
+![The Prices card in Settings](img/33-prices.png)
+
+1. Tick **Show prices**.
+2. Choose a **Currency**:
+   - **GBP, USD, EUR, AUD, CAD, CHF, JPY:** the price from mempool.space, refreshed every 10
+     minutes while Icebox is open.
+   - **MYR:** the euro price from mempool.space times the European Central Bank's daily rate
+     (from frankfurter.dev).
+   - **AED, SAR, QAR, BHD, OMR:** the US dollar price times the currency's fixed peg, with no
+     extra request.
+   - **Your own price…:** enter any three-letter code (e.g. KWD) and the price of one bitcoin.
+     Nothing is fetched, and it stays as you typed it until you change it.
+
+Values show as **≈ £…** under the balance, on the Coins tab and on the Send page. **Click the
+balance** to make your currency the big figure (with the BTC amount underneath); click again to
+switch back. Icebox remembers the choice. Only mainnet
+wallets get values: test coins are worthless. With a fetched currency, **Export history (CSV)**
+adds each payment's value on its day ([more](13-labels-coins-and-exports.md#exports)).
 
 ## Privacy: hide amounts
 

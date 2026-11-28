@@ -81,6 +81,33 @@ jobs:
       - name: Check
         run: cargo check --workspace --all-targets --locked
 
+  android:
+    name: build (Android)
+    # The GitHub Linux image already has the Android SDK, NDK and Java 17.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain and the Android target
+        shell: bash
+        run: |
+          channel="$(grep '^channel' rust-toolchain.toml | cut -d'"' -f2)"
+          rustup toolchain install "$channel" --profile minimal
+          rustup target add --toolchain "$channel" aarch64-linux-android
+          rustup show
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Build the APK (unsigned)
+        shell: bash
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          cargo tauri android init --ci
+          cargo tauri android build --apk --target aarch64 --ci
+          find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -print
+
   ui:
     name: interface checks
     runs-on: ubuntu-22.04
@@ -99,6 +126,8 @@ jobs:
           if grep -nE "innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function" ui/app.js; then
             echo "::error::Use textContent/DOM APIs, never HTML strings or eval, in ui/app.js"; exit 1
           fi
+      - name: Versions agree (and the Android versionCode matches)
+        run: python3 dev/check-versions.py
       - name: Demo preview is in sync with index.html
         run: |
           python3 dev/sync-preview.py

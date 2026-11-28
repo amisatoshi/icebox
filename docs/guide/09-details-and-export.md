@@ -6,7 +6,8 @@ Open the wallet and click **Details**.
 
 ![The Details tab: descriptor, BTCPay Server and Remove wallet](img/18-details.png)
 
-At the top:
+At the top (below it, **Labels and exports**: see
+[Labels, coins and exports](13-labels-coins-and-exports.md#exports)):
 
 - **Network:** Mainnet, Signet, Testnet or Regtest.
 - **Spending rule:** e.g. "any 2 devices (3 known to Icebox)".
@@ -46,6 +47,28 @@ Two tips:
   payers the same address.
 - On mainnet, anyone with this key can see every payment to the wallet, so only paste it into a
   BTCPay server you run or trust.
+
+### Watch further ahead for BTCPay *(new in 0.5)*
+
+BTCPay gives every invoice its own address, and invoices nobody pays leave addresses unused.
+Icebox normally asks its Electrum server about addresses up to 50 past the last one it has handed
+out, so after more than 50 unpaid invoices in a row, a payment to a later invoice wouldn't show in
+Icebox (BTCPay would still see it).
+
+Tick **Used with BTCPay Server: watch further ahead** below the key, choose how far (100, 250, 500
+or 1000 addresses; 250 suits most shops) and click **Start watching**. Icebox then watches that
+many addresses past the last one that received coins, and keeps moving the window forward as
+payments arrive. It also counts those addresses as handed out, so addresses from Icebox's own
+Receive tab start after them and never clash with BTCPay's.
+
+This can only be widened, not narrowed or undone: addresses already counted as handed out stay
+that way, and unticking the box only stops Icebox watching further ahead.
+
+![Watching further ahead for BTCPay](img/32-btcpay-watch.png)
+
+The trade-off is privacy: your Electrum server is told about more of your addresses. Point mainnet
+at [your own node](10-settings.md#use-your-own-node-recommended-for-mainnet) for the most privacy.
+A newly watched address is picked up at the next block.
 
 ## Watch this wallet on another computer
 

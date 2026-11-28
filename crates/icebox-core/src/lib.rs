@@ -4,11 +4,19 @@
 
 mod device_list;
 pub mod events;
+pub mod export;
+pub mod labels;
+pub mod prices;
 mod restore;
 mod service;
 mod watch_only;
 
 pub use events::Event;
+/// USB CDC-ACM over a file descriptor, for Android's USB host API.
+#[cfg(target_os = "android")]
+pub use frostsnap_coordinator::cdc_acm_usb::CdcAcmSerial;
+/// How the device loop reaches the devices (re-exported so the app can choose one per platform).
+pub use frostsnap_coordinator::{DesktopSerial, PortDesc, PortOpenError, Serial, SerialPort};
 pub use service::{parse_network, EventFn, Service};
 
 /// The Frostsnap commit the `frostsnap_core` / `frostsnap_coordinator` crates are pinned to.
@@ -157,6 +165,45 @@ fn decode_qr(width: usize, height: usize, pixels: &[u8]) -> Option<String> {
         .find_map(|grid| grid.decode().ok().map(|(_meta, text)| text))
 }
 
+/// A safe file name for an export: letters, digits, spaces, `.`, `-` and `_` only (anything else
+/// becomes `-`), no leading dots, at most 80 characters, never empty.
+pub fn export_file_name(name: &str) -> String {
+    let cleaned: String = name
+        .trim()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, ' ' | '.' | '-' | '_') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .take(80)
+        .collect();
+    let cleaned = cleaned.trim_start_matches('.').trim().to_string();
+    if cleaned.is_empty() {
+        "icebox-export.txt".into()
+    } else {
+        cleaned
+    }
+}
+
+/// `dir/name`, or `dir/name (2).ext`, `(3)`… if that file already exists.
+pub fn unused_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+    let first = dir.join(name);
+    if !first.exists() {
+        return first;
+    }
+    let (stem, ext) = match name.rfind('.') {
+        Some(i) if i > 0 => (&name[..i], &name[i..]),
+        _ => (name, ""),
+    };
+    (2..)
+        .map(|n| dir.join(format!("{stem} ({n}){ext}")))
+        .find(|p| !p.exists())
+        .expect("some number is free")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,5 +338,29 @@ mod tests {
         assert!(explorer_tx_url("regtest", TXID).is_err());
         assert!(explorer_tx_url("bitcoin", "abc").is_err());
         assert!(explorer_tx_url("bitcoin", &format!("{}/../x", &TXID[..60])).is_err());
+    }
+
+    #[test]
+    fn export_names() {
+        assert_eq!(
+            export_file_name("Shop labels 2026-11-27.jsonl"),
+            "Shop labels 2026-11-27.jsonl"
+        );
+        assert_eq!(export_file_name("../../etc/passwd"), "-..-etc-passwd");
+        assert_eq!(export_file_name("..."), "icebox-export.txt");
+        assert_eq!(export_file_name("Café/1"), "Caf--1");
+    }
+
+    #[test]
+    fn unused_paths() {
+        let dir = std::env::temp_dir().join(format!("icebox-unused-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(unused_path(&dir, "a.csv"), dir.join("a.csv"));
+        std::fs::write(dir.join("a.csv"), "").unwrap();
+        std::fs::write(dir.join("a (2).csv"), "").unwrap();
+        assert_eq!(unused_path(&dir, "a.csv"), dir.join("a (3).csv"));
+        std::fs::write(dir.join("noext"), "").unwrap();
+        assert_eq!(unused_path(&dir, "noext"), dir.join("noext (2)"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

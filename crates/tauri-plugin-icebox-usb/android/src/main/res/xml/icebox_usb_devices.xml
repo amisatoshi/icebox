@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Frostsnap devices (ESP32-C3 USB serial/JTAG, 303a:1001). Lets Android offer Icebox when one
+     is plugged in; choosing "Always" also gives Icebox permission without asking again. -->
+<resources>
+    <usb-device vendor-id="12346" product-id="4097" />
+</resources>

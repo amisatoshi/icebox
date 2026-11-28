@@ -1,11 +1,16 @@
 [package]
 name = "icebox"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
 license = "MIT"
 # Not published to crates.io (so path and git dependencies are fine for cargo-deny).
 publish = false
 description = "Icebox: a self-built desktop wallet for Frostsnap devices"
+
+[lib]
+# The Android app loads Icebox as a library; desktop builds use it from main.rs.
+name = "icebox_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -13,11 +18,15 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 icebox-core = { path = "../crates/icebox-core" }
 tauri = { version = "2", features = [] }
-tauri-plugin-single-instance = "2"
-tauri-plugin-window-state = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-icebox-usb = { path = "../crates/tauri-plugin-icebox-usb" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Desktop only: one copy at a time, and remembered window size.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"

@@ -42,6 +42,7 @@ const state = {
   hideBalance: false,   // amounts shown as dots (View → Hide or show balances, Ctrl+B)
   eraseMany: null,      // Devices → Danger zone: { open, picked: Set, typed, sent: [ids] }
   logs: null,           // Logs page: { text, loading }
+  prices: { settings: null, price: null, at: null, error: null, source: null }, // see "prices" below
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -218,6 +219,52 @@ function stopVerify() {
   state.verify = null;
 }
 
+// ---------------------------------------------------------------------------------------------
+// phones: top bar and drawer (the sidebar slides in from the left)
+// ---------------------------------------------------------------------------------------------
+
+function setDrawer(open) {
+  document.body.classList.toggle("drawer-open", open);
+  const btn = $("drawer-btn");
+  if (btn) btn.setAttribute("aria-expanded", String(open));
+}
+
+/** The page's name for the phone's top bar. */
+function mobileTitle() {
+  const v = state.view.name;
+  if (v === "wallet") {
+    const k = state.keys.find((k) => k.key_id === state.view.keyId) || state.watchOnly.find((k) => k.key_id === state.view.keyId);
+    return k ? k.name : "Wallet";
+  }
+  return ({ devices: "Devices", settings: "Settings", restore: "Restore", wizard: "New multi-sig wallet",
+    watch_add: "Add watch-only", logs: "Logs", shortcuts: "Shortcuts", about: "About" })[v] || "Icebox";
+}
+
+function renderMobileBar() {
+  if (!$("mobilebar")) return;
+  $("mobile-title").textContent = mobileTitle();
+  const ready = state.devices.filter((d) => d.ready).length;
+  $("mobile-device-count").textContent = ready === 1 ? "1 device" : `${ready} devices`;
+  $("mobile-devices").classList.toggle("on", ready > 0);
+  const more = $("more-hide");
+  if (more) more.textContent = state.hideBalance ? "Show amounts" : "Hide amounts";
+}
+
+/** Android draws the app under the status and gesture bars. Older webviews report no safe-area
+ *  insets for that, so measure, and fall back to typical sizes. */
+function fixAndroidInsets() {
+  if (!/Android/.test(navigator.userAgent || "")) return;
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;visibility:hidden;padding-top:env(safe-area-inset-top,0px)";
+  document.body.append(probe);
+  const top = parseFloat(getComputedStyle(probe).paddingTop) || 0;
+  probe.remove();
+  if (top < 1) {
+    document.documentElement.style.setProperty("--inset-top", "40px");
+    document.documentElement.style.setProperty("--inset-bottom", "20px");
+  }
+}
+
 function render() {
   // Leaving the restore page stops the scan, so devices aren't asked about shares forever.
   if (state.restoreScanning && state.view.name !== "restore") {
@@ -236,6 +283,7 @@ function render() {
   const focusId = active && active.id;
   const selStart = active && active.selectionStart;
   renderSidebar();
+  renderMobileBar();
   const main = $("main");
   main.replaceChildren(renderMain());
   if (focusId) {
@@ -413,7 +461,7 @@ function renderSavedRestore(r) {
     h("div", { class: "row between" },
       h("div", { class: "row" },
         h("h2", { text: r.name }),
-        r.network ? h("span", { class: "pill" + (r.network === "bitcoin" ? " main" : ""), text: networkLabel(r.network) }) : null,
+        r.network ? h("span", { class: "pill" + (r.network === "bitcoin" ? " mainnet" : ""), text: networkLabel(r.network) }) : null,
         h("span", { class: "pill warn", text: "saved restore" }),
       ),
       h("strong", { text: r.restorable ? "Ready" : savedCount(r) }),
@@ -511,7 +559,7 @@ function renderRestore() {
       h("div", { class: "row between" },
         h("div", { class: "row" },
           h("h2", { text: c.name }),
-          c.network ? h("span", { class: "pill" + (c.network === "bitcoin" ? " main" : ""), text: networkLabel(c.network) }) : null,
+          c.network ? h("span", { class: "pill" + (c.network === "bitcoin" ? " mainnet" : ""), text: networkLabel(c.network) }) : null,
         ),
         h("strong", { text: need ? `${c.found} found · ${need} needed to restore` : `${c.found} found` }),
       ),
@@ -708,6 +756,7 @@ function renderDevices() {
       h("p", { class: "small", text: "Plug a Frostsnap into a USB port. You can daisy-chain more devices off the first one." }),
       state.demo ? null : h("button", { class: "btn", onclick: enterDemo }, "No devices to hand? Try demo mode"),
       state.demo ? null : linuxUsbHint(),
+      state.demo ? null : androidUsbHint(),
     ));
     return page;
   }
@@ -843,6 +892,13 @@ function renderDangerZone() {
 // On Linux, a device whose screen is on but that isn't listed almost always means the USB rule
 // isn't installed (the AppImage can't install it). Show the one-line fix.
 const LINUX_USB_RULE_CMD = "sudo wget -O /etc/udev/rules.d/70-frostsnap.rules https://raw.githubusercontent.com/amisatoshi/icebox/main/linux/70-frostsnap.rules && sudo udevadm control --reload && sudo udevadm trigger";
+function androidUsbHint() {
+  if (!/Android/.test(navigator.userAgent || "")) return null;
+  return h("div", { class: "notice" },
+    h("p", { text: "Plug a Frostsnap device into the phone's USB-C port (some phones need a USB-C OTG adapter), then tap Allow when Android asks whether Icebox may use it." }),
+  );
+}
+
 function linuxUsbHint() {
   const ua = navigator.userAgent || "";
   if (!/Linux/.test(ua) || /Android/.test(ua)) return null;
@@ -1175,7 +1231,7 @@ function renderBackupList(key) {
       }, label);
       const status = d.backup_done === true ? h("span", { class: "pill ok", text: "backed up" })
         : d.backup_done === false ? h("span", { class: "pill warn", text: "not backed up" })
-        : h("span", { class: "pill", text: "unknown on this computer" });
+        : h("span", { class: "pill", text: "not known here", title: "This wallet was restored, and whether its backups were written down is recorded by the app that made it, not on the devices." });
       const c = state.checkBackup;
       const checking = c && c.device_id === d.id && c.keyId === key.key_id && !c.done && isConnected(d.id);
       const check = h("button", {
@@ -1188,12 +1244,12 @@ function renderBackupList(key) {
       else if (checking) action = h("div", { class: "row" },
         h("span", { class: "pill warn", text: "on the device: pick each word from your paper" }),
         h("button", { class: "btn small ghost", onclick: () => { call("cancel_protocol"); state.checkBackup = null; render(); } }, "Cancel"));
-      else if (!isConnected(d.id)) action = d.backup_done === true ? status : h("div", { class: "row" }, status, h("span", { class: "pill", text: "plug in to show" }));
-      else if (d.backup_done === true) action = h("div", { class: "row" }, status, check, show("Show again", "btn small ghost"));
-      else action = h("div", { class: "row" }, status, show("Show backup on device", "btn small"), check);
-      return h("div", { class: "item" },
+      else if (!isConnected(d.id)) action = d.backup_done === true ? null : h("span", { class: "muted small", text: "plug in to show its backup" });
+      else if (d.backup_done === true) action = h("div", { class: "row" }, check, show("Show again", "btn small ghost"));
+      else action = h("div", { class: "row" }, show("Show backup on device", "btn small"), check);
+      return h("div", { class: "item backup-row" },
         h("div", { class: "stack" },
-          h("strong", { text: d.name || deviceName(d.id) }),
+          h("div", { class: "row" }, h("strong", { text: d.name || deviceName(d.id) }), status),
           h("span", { class: "muted small", text: `share #${d.share_index}` }),
         ),
         action,
@@ -1214,11 +1270,12 @@ async function openWallet(keyId, tab) {
   }
   state.view = { name: "wallet", keyId };
   render();
+  call("btcpay_watch", { keyId }).then((n) => { if (state.wallet && state.wallet.keyId === keyId && n !== undefined) { state.wallet.btcpayAhead = n || 0; render(); } });
   await refreshWallet();
 }
 
 function freshSend() {
-  return { address: "", amount: "", max: false, feerate: "", preview: null, signers: [], sessionId: null, busy: false };
+  return { address: "", amount: "", max: false, feerate: "", note: "", preview: null, signers: [], sessionId: null, busy: false };
 }
 
 async function refreshWallet() {
@@ -1232,6 +1289,7 @@ async function refreshWallet() {
   if (state.wallet !== w) return;
   if (data) { noteReplaced(w, data); w.data = data; }
   if (sessions) w.sessions = sessions;
+  if (w.tab === "coins") await loadCoins(w, true);
   render();
 }
 
@@ -1247,7 +1305,7 @@ function renderWallet() {
       h("div", {},
         h("div", { class: "row" },
           h("h1", { text: key.name }),
-          h("span", { class: "pill" + (key.network === "bitcoin" ? " main" : ""), text: networkLabel(key.network) }),
+          h("span", { class: "pill" + (key.network === "bitcoin" ? " mainnet" : ""), text: networkLabel(key.network) }),
           key.watch_only
             ? h("span", { class: "pill", text: "👁 watch-only", title: "This computer can see this wallet but not spend from it" })
             : h("span", { class: "pill", text: signLabel(key), title: `${key.devices.length} device${key.devices.length === 1 ? "" : "s"} known to Icebox` }),
@@ -1258,10 +1316,8 @@ function renderWallet() {
         ),
       ),
       h("div", { class: "stack" },
-        h("div", { class: "row balance-row" },
-          h("div", { class: "balance" }, data ? money(fmtBtc(data.balance)) : "—", h("span", { class: "unit", text: "BTC" })),
-          hideBalanceButton(),
-        ),
+        h("div", { class: "row balance-row" }, balanceFigure(key, data), hideBalanceButton()),
+        balanceSecondLine(key, data),
         data && data.pending_incoming
           ? h("span", { class: "muted small", text: `+ ${money(fmtSats(data.pending_incoming))} incoming, unconfirmed` })
           : null,
@@ -1289,26 +1345,30 @@ function renderWallet() {
     ));
   } else if (key.devices.some((d) => d.backup_done == null)) {
     page.append(h("div", { class: "notice" },
-      "This wallet was restored, so Icebox doesn't know whether its backups were written down (that's recorded by the app that made it, not on the devices). If you're not sure, ",
-      h("button", { class: "link", onclick: () => { w.tab = "backups"; render(); } }, "show each device's backup and write it down"),
-      ".",
+      h("span", { class: "wide-only", text: "This wallet was restored, so Icebox doesn't know whether its backups were written down (that's recorded by the app that made it, not on the devices). If you're not sure, " }),
+      h("span", { class: "phone-only", text: "Restored wallet: backups not known here. " }),
+      h("button", { class: "link", onclick: () => { w.tab = "backups"; render(); } },
+        h("span", { class: "wide-only", text: "show each device's backup and write it down" }),
+        h("span", { class: "phone-only", text: "Check them" })),
+      h("span", { class: "wide-only", text: "." }),
     ));
   }
 
   const tabs = key.watch_only
-    ? [["history", "History"], ["receive", "Receive"], ["details", "Details"]]
-    : [["history", "History"], ["receive", "Receive"], ["send", "Send"], ["backups", "Backups"], ["details", "Details"]];
+    ? [["history", "History"], ["receive", "Receive"], ["coins", "Coins"], ["details", "Details"]]
+    : [["history", "History"], ["receive", "Receive"], ["send", "Send"], ["coins", "Coins"], ["backups", "Backups"], ["details", "Details"]];
   if (!tabs.some(([id]) => id === w.tab)) w.tab = "history";
   page.append(h("div", { class: "tabs" },
     ...tabs.map(([id, label]) => h("button", {
       class: w.tab === id ? "active" : "",
-      onclick: () => { w.tab = id; render(); if (id === "details") loadDescriptor(); },
+      onclick: () => { w.tab = id; render(); if (id === "details") loadDescriptor(); if (id === "coins") loadCoins(w, true); },
     }, label)),
   ));
 
   if (w.tab === "receive") page.append(renderReceive(key, w));
   else if (w.tab === "send") page.append(renderSend(key, w));
   else if (w.tab === "backups") page.append(h("div", { class: "card" }, renderBackupList(key)));
+  else if (w.tab === "coins") page.append(renderCoins(key, w));
   else if (w.tab === "details") page.append(renderDetails(key, w));
   else page.append(renderHistory(w));
   return page;
@@ -1336,12 +1396,12 @@ function renderHistory(w) {
   return h("div", { class: "stack" }, ...replaced,
     txs.some(stale) ? h("div", { class: "notice warn", text: "A payment marked \"may never confirm\" has been waiting for over two weeks. The network has probably dropped it (usually because its fee was too low), so it may never confirm. Click its transaction id to check it on mempool.space. Fee bumping, which can rescue payments like this, is planned for a later version." }) : null,
     h("div", { class: "card" },
-    h("table", {},
+    h("table", { class: "history" },
       h("thead", {}, h("tr", {}, h("th", { text: "When" }), h("th", { text: "Transaction" }), h("th", { text: "Amount" }), h("th", { text: "Status" }))),
       h("tbody", {},
         ...txs.map((tx) => h("tr", {},
           h("td", { text: fmtTime(tx.timestamp) }),
-          h("td", {}, txLink(w.data.network, tx.txid)),
+          h("td", { class: "tx-cell" }, txLink(w.data.network, tx.txid), labelEditor(w, "tx", tx.txid, tx.label)),
           h("td", { class: "num " + (tx.net_value > 0 ? "pos" : "neg"), text: tx.net_value === null ? "—" : money((tx.net_value > 0 ? "+" : "") + fmtSats(tx.net_value)) }),
           h("td", {}, h("span", {
             class: "pill" + (tx.confirmations >= 1 ? " ok" : stale(tx) ? " bad" : " warn"),
@@ -1427,6 +1487,9 @@ function renderReceive(key, w) {
     return wrap;
   }
   const v = state.verify;
+  if (w.btcpayAhead) {
+    card.append(h("div", { class: "notice", text: `This wallet is used with BTCPay Server, which hands out its addresses from the start of the wallet. Addresses here start after the ${w.btcpayAhead} Icebox keeps watching for BTCPay, so they never clash. For shop payments, take addresses from BTCPay.` }));
+  }
   if (state.demo) {
     card.append(h("div", { class: "notice warn", text: "Demo mode: this address and QR code are placeholders. They can't receive anything, so never send coins to them." }));
   }
@@ -1441,6 +1504,7 @@ function renderReceive(key, w) {
       h("h2", { text: `Address #${a.index}` }),
       h("button", { class: "link", onclick: () => nextAddress(key, w) }, "Get another"),
     ),
+    h("div", { class: "row" }, labelEditor(w, "addr", a.address, a.label)),
     h("div", { class: "grid2" },
       h("div", { class: "stack" },
         addressChunks(a.address),
@@ -1476,19 +1540,41 @@ function renderAddressList(key, w) {
   );
   card.append(head);
   if (!w.addressesOpen) return card;
-  if (!w.addresses) { card.append(h("p", { class: "muted", text: "Loading…" })); return card; }
+  if (!w.addresses) {
+    // The list is dropped when something changes it (labels imported, BTCPay watching); fetch it again.
+    if (!w.addressesLoading) {
+      w.addressesLoading = true;
+      call("addresses", { keyId: key.key_id }).then((list) => {
+        w.addressesLoading = false;
+        if (list && state.wallet === w) { w.addresses = list; render(); }
+      });
+    }
+    card.append(h("p", { class: "muted", text: "Loading…" }));
+    return card;
+  }
+  // A wallet watching far ahead for BTCPay can have hundreds of handed-out addresses; unless asked
+  // for all of them, show the newest few plus every one that's been used or labelled.
+  const many = w.addresses.length > 60 && !w.allAddresses;
+  const shown = many ? w.addresses.filter((x, i) => i < 10 || x.used || x.label) : w.addresses;
   card.append(h("div", { class: "list" },
-    ...w.addresses.map((x) => h("button", {
+    ...shown.map((x) => h("button", {
       class: "item addr-row" + (w.address && w.address.index === x.index ? " current" : ""),
       onclick: () => showAddress(key, w, x.index),
     },
       h("span", { class: "muted mono", text: `#${x.index}` }),
       h("span", { class: "mono small addr-short" + (x.used ? " struck" : ""), text: x.address.slice(0, 14) + "…" + x.address.slice(-8), title: x.address }),
+      x.label ? h("span", { class: "small muted addr-label", text: x.label }) : null,
       x.used ? h("span", { class: "pill bad", text: "used" })
         : x.shared ? h("span", { class: "pill", text: "handed out" })
         : h("span", { class: "pill ok", text: "fresh" }),
     )),
   ));
+  if (many) {
+    card.append(h("p", { class: "muted small" },
+      `Showing the newest 10 and every used or labelled address (${shown.length} of ${w.addresses.length}). `,
+      h("button", { class: "link", onclick: () => { w.allAddresses = true; render(); } }, "Show all"),
+    ));
+  }
   return card;
 }
 
@@ -1510,7 +1596,7 @@ function renderSend(key, w) {
     return wrap;
   }
 
-  const card = h("div", { class: "card" }, h("h2", { text: "New payment" }));
+  const card = h("div", { class: "card" }, h("h2", { text: s.preview && s.preview.to_self ? "Combine coins" : "New payment" }));
   if (!s.preview) {
     card.append(
       h("label", { class: "field" }, "Pay to",
@@ -1526,7 +1612,8 @@ function renderSend(key, w) {
       ),
       h("div", { class: "grid2" },
         h("label", { class: "field" }, "Amount (sats)",
-          h("input", { id: "send-amount", type: "number", min: "1", step: "1", value: s.amount, disabled: s.max, oninput: (e) => (s.amount = e.target.value) }),
+          h("input", { id: "send-amount", type: "number", min: "1", step: "1", value: s.amount, disabled: s.max, oninput: (e) => { s.amount = e.target.value; const el = $("send-fiat"); if (el) el.textContent = fiat(Math.floor(Number(s.amount)), key.network) || ""; } }),
+          priceCurrency() && key.network === "bitcoin" ? h("span", { id: "send-fiat", class: "muted small", text: (!s.max && fiat(Math.floor(Number(s.amount)) || 0, key.network)) || "" }) : null,
           h("span", { class: "muted small", text: `Minimum ${fmtSats(minSendSats(s.address))}${s.address.trim() ? " to this address" : ""}: smaller amounts can't be sent ("dust").` }),
           h("label", { class: "check" }, h("input", { type: "checkbox", checked: s.max, onchange: (e) => { s.max = e.target.checked; render(); } }), "Send everything"),
         ),
@@ -1534,6 +1621,10 @@ function renderSend(key, w) {
           h("input", { id: "send-fee", type: "number", min: "1", step: "0.1", value: s.feerate, oninput: (e) => (s.feerate = e.target.value) }),
           renderFeeChoices(key, w),
         ),
+      ),
+      h("label", { class: "field" }, "Note (optional)",
+        h("input", { id: "send-note", type: "text", maxlength: "255", value: s.note, placeholder: "e.g. Supplier invoice 1042", oninput: (e) => (s.note = e.target.value) }),
+        h("span", { class: "muted small", text: "Saved here as the payment's label, and included when you export labels or history. It isn't sent with the payment." }),
       ),
       h("div", { class: "row" },
         h("button", {
@@ -1566,10 +1657,13 @@ function renderSend(key, w) {
   const p = s.preview;
   card.append(
     h("div", { class: "list" },
-      h("div", { class: "item" }, h("span", { class: "muted", text: "To" }), h("span", { class: "mono", text: p.recipient })),
-      h("div", { class: "item" }, h("span", { class: "muted", text: "Amount" }), h("strong", { class: "mono", text: fmtSats(p.amount) })),
-      h("div", { class: "item" }, h("span", { class: "muted", text: "Network fee" }), h("span", { class: "mono", text: `${fmtSats(p.fee)} (${p.feerate} sat/vB)` })),
+      p.to_self
+        ? h("div", { class: "item" }, h("span", { class: "muted", text: "To" }), h("span", { text: `this wallet, combining ${p.input_count} coins into one` }))
+        : h("div", { class: "item" }, h("span", { class: "muted", text: "To" }), h("span", { class: "mono", text: p.recipient })),
+      h("div", { class: "item" }, h("span", { class: "muted", text: p.to_self ? "New coin" : "Amount" }), h("strong", { class: "mono", text: fmtSats(p.amount) + (fiat(p.amount, key.network) ? `  (${fiat(p.amount, key.network)})` : "") })),
+      h("div", { class: "item" }, h("span", { class: "muted", text: "Network fee" }), h("span", { class: "mono", text: `${fmtSats(p.fee)} (${p.feerate} sat/vB)` + (fiat(p.fee, key.network) ? `  ${fiat(p.fee, key.network)}` : "") })),
       p.change ? h("div", { class: "item" }, h("span", { class: "muted", text: "Change back to this wallet" }), h("span", { class: "mono", text: fmtSats(p.change) })) : null,
+      s.note.trim() ? h("div", { class: "item" }, h("span", { class: "muted", text: "Note" }), h("span", { text: s.note.trim() })) : null,
     ),
     h("h3", { text: `Sign with ${key.threshold} device${key.threshold > 1 ? "s" : ""}` }),
     h("div", { class: "list" },
@@ -1588,7 +1682,7 @@ function renderSend(key, w) {
       )),
     ),
     h("div", { class: "row" },
-      h("button", { class: "btn ghost", onclick: () => { s.preview = null; render(); } }, "Edit"),
+      h("button", { class: "btn ghost", onclick: () => { if (p.to_self) { w.send = freshSend(); w.tab = "coins"; loadCoins(w, true); } else s.preview = null; render(); } }, p.to_self ? "Back to coins" : "Edit"),
       h("button", {
         class: "btn primary",
         disabled: s.signers.length !== key.threshold || s.busy,
@@ -1596,7 +1690,14 @@ function renderSend(key, w) {
           s.busy = true; render();
           const sessionId = await call("start_send", { keyId: key.key_id, signerIds: s.signers });
           s.busy = false;
-          if (sessionId) { s.sessionId = sessionId; s.preview = null; await refreshWallet(); }
+          if (sessionId) {
+            s.sessionId = sessionId; s.preview = null;
+            await refreshWallet();
+            // The payment's txid is fixed once signing starts, so the note can be saved now and
+            // is there whether it's broadcast from here or later from Payments in progress.
+            const session = (w.sessions || []).find((x) => x.session_id === sessionId);
+            if (s.note.trim() && session) await call("set_label", { keyId: key.key_id, kind: "tx", reference: session.txid, label: s.note });
+          }
           render();
         },
       }, `Start signing (${s.signers.length}/${key.threshold})`),
@@ -1652,6 +1753,8 @@ function renderPendingSession(key, w, p) {
           onclick: async () => {
             w.confirmCancel = null;
             await call("cancel_sign_session", { sessionId: p.session_id });
+            // A cancelled payment never reaches the blockchain, so its note goes too.
+            await call("set_label", { keyId: key.key_id, kind: "tx", reference: p.txid, label: "" });
             if (w.send.sessionId === p.session_id) w.send = freshSend();
             refreshWallet();
           },
@@ -1725,15 +1828,510 @@ async function doBroadcast(w, sessionId) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Prices: off until switched on in Settings. Only the public price is fetched (mempool.space, and
+// for the ringgit the European Central Bank's rate via frankfurter.dev); nothing about the wallet
+// is in any request. A price the user types in fetches nothing at all.
+// ---------------------------------------------------------------------------------------------
+
+const PRICE_CURRENCIES = [
+  ["GBP", "British pound"], ["USD", "US dollar"], ["EUR", "Euro"], ["AUD", "Australian dollar"],
+  ["CAD", "Canadian dollar"], ["CHF", "Swiss franc"], ["JPY", "Japanese yen"], ["MYR", "Malaysian ringgit"],
+  ["AED", "UAE dirham"], ["SAR", "Saudi riyal"], ["QAR", "Qatari riyal"], ["BHD", "Bahraini dinar"], ["OMR", "Omani rial"],
+];
+const MEMPOOL_CURRENCIES = ["GBP", "USD", "EUR", "AUD", "CAD", "CHF", "JPY"];
+// Fixed pegs to the US dollar (Kuwait's dinar follows a basket, so it's left to "your own price").
+const USD_PEGS = { AED: 3.6725, SAR: 3.75, QAR: 3.64, BHD: 0.376, OMR: 0.3845 };
+const MEMPOOL_PRICES = "https://mempool.space/api/v1/prices";
+const PRICE_REFRESH_MS = 10 * 60 * 1000;
+// Demo mode never touches the network, so it shows a made-up price.
+const DEMO_USD_PRICE = 80000;
+
+/** The currency prices are shown in, or null when prices are off. */
+function priceCurrency() {
+  const s = state.prices.settings;
+  if (!s || !s.enabled) return null;
+  return s.currency === "MANUAL" ? s.manual_code : s.currency;
+}
+
+async function fetchJson(url) {
+  const r = await fetch(url, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer" });
+  if (!r.ok) throw new Error(`${new URL(url).host} answered ${r.status}`);
+  return r.json();
+}
+
+const positive = (x) => (typeof x === "number" && isFinite(x) && x > 0 ? x : null);
+
+/** Today's price of one bitcoin in `currency`, and where it came from. */
+async function fetchPrice(currency) {
+  if (state.demo) return { price: DEMO_USD_PRICE * (USD_PEGS[currency] || ({ GBP: 0.79, EUR: 0.93, AUD: 1.53, CAD: 1.39, CHF: 0.88, JPY: 152, MYR: 4.4 }[currency] || 1)), source: "a made-up demo price" };
+  const p = await fetchJson(MEMPOOL_PRICES);
+  if (MEMPOOL_CURRENCIES.includes(currency)) {
+    const price = positive(p[currency]);
+    if (!price) throw new Error(`mempool.space has no ${currency} price`);
+    return { price, source: "mempool.space" };
+  }
+  if (USD_PEGS[currency]) {
+    const usd = positive(p.USD);
+    if (!usd) throw new Error("mempool.space has no USD price");
+    return { price: usd * USD_PEGS[currency], source: `mempool.space (US dollar × the fixed ${currency} peg)` };
+  }
+  if (currency === "MYR") {
+    const fx = await fetchJson("https://api.frankfurter.dev/v1/latest?base=EUR&symbols=MYR");
+    const eur = positive(p.EUR); const rate = positive(fx && fx.rates && fx.rates.MYR);
+    if (!eur || !rate) throw new Error("couldn't get the euro price or the ringgit rate");
+    return { price: eur * rate, source: "mempool.space and the European Central Bank's rate" };
+  }
+  throw new Error(`no price source for ${currency}`);
+}
+
+let priceTimer = null;
+async function refreshPrice() {
+  clearTimeout(priceTimer);
+  const pr = state.prices;
+  const s = pr.settings;
+  if (!s || !s.enabled) { Object.assign(pr, { price: null, at: null, error: null, source: null }); render(); return; }
+  if (s.currency === "MANUAL") {
+    Object.assign(pr, { price: s.manual_price, at: Date.now(), error: null, source: "your own price" });
+    render();
+    return;
+  }
+  const asked = s.currency;
+  try {
+    const { price, source } = await fetchPrice(asked);
+    if (state.prices.settings !== s) return; // settings changed meanwhile
+    Object.assign(pr, { price, at: Date.now(), error: null, source });
+  } catch (e) {
+    if (state.prices.settings !== s) return;
+    pr.error = String(e.message || e);
+  }
+  render();
+  priceTimer = setTimeout(refreshPrice, PRICE_REFRESH_MS);
+}
+
+async function loadPriceSettings() {
+  const s = await call("price_settings");
+  if (s) { state.prices.settings = s; refreshPrice(); }
+}
+
+async function savePriceSettings(changes) {
+  const next = Object.assign({}, state.prices.settings, changes);
+  if (state.demo) { state.prices.settings = next; refreshPrice(); return true; }
+  const saved = await call("set_price_settings", { settings: next });
+  if (saved) { state.prices.settings = saved; refreshPrice(); return true; }
+  render();
+  return false;
+}
+
+function fmtFiat(amount, currency) {
+  try {
+    return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: amount !== 0 && Math.abs(amount) < 1 ? 4 : 2 }).format(amount);
+  } catch (_) {
+    return `${amount.toLocaleString("en-GB", { maximumFractionDigits: 2 })} ${currency}`;
+  }
+}
+
+// The big balance figure can be in BTC (the default) or, with prices on, in the user's currency.
+// Clicking it swaps the two; the choice is remembered on this computer.
+function fiatFirst() {
+  try { return localStorage.getItem("icebox.fiatFirst") === "1"; } catch (_) { return false; }
+}
+function setFiatFirst(on) {
+  try { localStorage.setItem("icebox.fiatFirst", on ? "1" : "0"); } catch (_) { /* not kept; fine */ }
+  render();
+}
+
+/** The balance as the big figure: BTC, or the currency value when that's chosen and known. */
+function balanceFigure(key, data) {
+  const value = data ? fiatValue(data.balance, key.network) : null;
+  if (!data) return h("div", { class: "balance" }, "—", h("span", { class: "unit", text: "BTC" }));
+  const inFiat = value !== null && fiatFirst();
+  const figure = inFiat
+    ? h("div", { class: "balance" }, money(fmtFiat(value, priceCurrency())))
+    : h("div", { class: "balance" }, money(fmtBtc(data.balance)), h("span", { class: "unit", text: "BTC" }));
+  if (value === null) return figure;
+  return h("button", {
+    class: "balance-swap",
+    title: inFiat ? "Show the balance in BTC" : `Show the balance in ${priceCurrency()}`,
+    "aria-label": inFiat ? "Show the balance in BTC" : `Show the balance in ${priceCurrency()}`,
+    onclick: () => setFiatFirst(!inFiat),
+  }, figure);
+}
+
+/** The line under the big figure: the other unit. */
+function balanceSecondLine(key, data) {
+  if (!data) return null;
+  const approx = fiat(data.balance, key.network);
+  if (!approx) return null;
+  const text = fiatFirst() ? money(fmtBtc(data.balance)) + " BTC" : approx;
+  return h("span", { class: "muted fiat", text });
+}
+
+/** An amount in sats in the chosen currency, as a number, or null when prices are off, not known
+ *  yet, or the wallet isn't on mainnet. */
+function fiatValue(sats, network) {
+  const cur = priceCurrency();
+  const price = state.prices.price;
+  if (network !== "bitcoin" || !cur || !price || sats === null || sats === undefined) return null;
+  return (sats / 1e8) * price;
+}
+
+/** "≈ £12.34" for an amount in sats, or null when prices are off or not known yet. Test coins
+ *  (signet, testnet, regtest) are worth nothing, so they never get a price. */
+function fiat(sats, network) {
+  const value = fiatValue(sats, network);
+  return value === null ? null : "≈ " + money(fmtFiat(value, priceCurrency()));
+}
+
+/** Each day's price (YYYY-MM-DD -> price) for the CSV, from the full history in one request,
+ *  so the server never sees which days the wallet had payments on. */
+async function dailyPrices(currency) {
+  const base = MEMPOOL_CURRENCIES.includes(currency) ? currency : USD_PEGS[currency] ? "USD" : "EUR";
+  const hist = await fetchJson(`https://mempool.space/api/v1/historical-price?currency=${base}`);
+  const out = {};
+  for (const e of (hist && hist.prices) || []) {
+    const v = positive(e[base]);
+    if (v && e.time) out[new Date(e.time * 1000).toISOString().slice(0, 10)] = v;
+  }
+  if (USD_PEGS[currency]) for (const d in out) out[d] *= USD_PEGS[currency];
+  if (currency === "MYR") {
+    const days = Object.keys(out).sort();
+    if (days.length) {
+      const fx = await fetchJson(`https://api.frankfurter.dev/v1/${days[0]}..?base=EUR&symbols=MYR`);
+      const rates = (fx && fx.rates) || {};
+      let last = null;
+      for (const d of days) {
+        // The ECB publishes on working days only; a weekend uses Friday's rate.
+        const r = positive(rates[d] && rates[d].MYR);
+        if (r) last = r;
+        if (last) out[d] *= last; else delete out[d];
+      }
+    }
+  }
+  return out;
+}
+
+function renderPriceSettings() {
+  const pr = state.prices;
+  const s = pr.settings;
+  const card = h("div", { class: "card stack" }, h("h2", { text: "Prices" }));
+  if (!s) { card.append(h("p", { class: "muted", text: "Loading…" })); return card; }
+  card.append(
+    h("p", { class: "muted", text: "Show what amounts are worth in your currency. Off by default: fetching a price tells the price server that someone at your internet address uses a Bitcoin wallet (nothing about the wallet itself is sent). Icebox asks mempool.space every 10 minutes while it's open; for the ringgit it also asks frankfurter.dev for the European Central Bank's rate. A price you type in yourself fetches nothing." }),
+    h("label", { class: "row check-row" },
+      h("input", { type: "checkbox", checked: s.enabled, onchange: (e) => savePriceSettings({ enabled: e.target.checked }) }),
+      h("span", { text: "Show prices" }),
+    ),
+  );
+  if (!s.enabled) return card;
+  const m = pr.manualDraft = pr.manualDraft || { code: s.manual_code || "", price: s.manual_price ? String(s.manual_price) : "" };
+  card.append(h("label", { class: "field" }, "Currency",
+    h("select", {
+      id: "price-currency",
+      onchange: (e) => {
+        const currency = e.target.value;
+        if (currency === "MANUAL" && !(s.manual_code && s.manual_price)) { s.currency = "MANUAL"; render(); return; }
+        savePriceSettings({ currency });
+      },
+    },
+      ...PRICE_CURRENCIES.map(([code, name]) => h("option", { value: code, selected: s.currency === code }, `${code} – ${name}`)),
+      h("option", { value: "MANUAL", selected: s.currency === "MANUAL" }, "Your own price…"),
+    ),
+  ));
+  if (s.currency === "MANUAL") {
+    card.append(
+      h("div", { class: "grid2" },
+        h("label", { class: "field" }, "Currency code",
+          h("input", { id: "price-code", type: "text", maxlength: "3", value: m.code, placeholder: "KWD", spellcheck: "false", oninput: (e) => (m.code = e.target.value) })),
+        h("label", { class: "field" }, "Price of 1 bitcoin",
+          h("input", { id: "price-manual", type: "number", min: "0", step: "any", value: m.price, oninput: (e) => (m.price = e.target.value) })),
+      ),
+      h("div", { class: "row" }, h("button", {
+        class: "btn small",
+        onclick: async () => {
+          if (await savePriceSettings({ currency: "MANUAL", manual_code: m.code, manual_price: Number(m.price) })) toast("Price saved");
+        },
+      }, "Save price")),
+      h("p", { class: "muted small", text: "For a currency Icebox doesn't fetch. It stays as you typed it until you change it, and the history export doesn't add values with it (it would only be today's price)." }),
+    );
+  }
+  const cur = priceCurrency();
+  if (pr.error) card.append(h("div", { class: "notice warn", text: `Couldn't get the price: ${pr.error}. Icebox will try again in 10 minutes.` }));
+  else if (pr.price && cur) {
+    const ago = Math.round((Date.now() - pr.at) / 60000);
+    card.append(h("p", { class: "small", text: `1 BTC = ${fmtFiat(pr.price, cur)} · ${pr.source}${s.currency === "MANUAL" ? "" : ago < 1 ? ", just now" : `, ${ago} min ago`}` }));
+  }
+  return card;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Coins: the separate amounts the wallet holds. Seeing them, labelling them, and combining chosen
+// ones into one. Paying from chosen coins needs a change in the Frostsnap library and will follow.
+// ---------------------------------------------------------------------------------------------
+
+async function loadCoins(w, force) {
+  if (w.coins && !force) return;
+  const coins = await call("coins", { keyId: w.keyId });
+  if (coins && state.wallet === w) {
+    w.coins = coins;
+    const held = new Set(coins.map((c) => c.outpoint));
+    w.coinPick = new Set([...(w.coinPick || [])].filter((o) => held.has(o)));
+    render();
+  }
+}
+
+function renderCoins(key, w) {
+  if (!w.coins) return h("div", { class: "card" }, h("p", { class: "muted", text: "Loading…" }));
+  const coins = w.coins;
+  if (!coins.length) return h("div", { class: "card empty" }, h("p", { text: "No coins yet. Each payment into this wallet becomes a coin here." }));
+  const pick = w.coinPick = w.coinPick || new Set();
+  const total = coins.reduce((n, c) => n + c.value, 0);
+  const chosen = coins.filter((c) => pick.has(c.outpoint));
+  const chosenTotal = chosen.reduce((n, c) => n + c.value, 0);
+  // Combining needs two or more coins; with one there's nothing to choose.
+  const canSpend = !key.watch_only && coins.length >= 2;
+  const frozen = coins.filter((c) => !c.spendable);
+
+  const wrap = h("div", { class: "stack" });
+  wrap.append(h("div", { class: "card stack" },
+    h("p", { class: "muted small", text: `${coins.length} coin${coins.length === 1 ? "" : "s"}, ${money(fmtSats(total))}${fiat(total, key.network) ? ` (${fiat(total, key.network)})` : ""} in all. Each payment into the wallet, and each bit of change from a payment out, is a separate coin. A payment spends whole coins, and every coin it spends costs a little in fees.` }),
+    !key.watch_only && coins.length === 1 ? h("p", { class: "muted small", text: "With only one coin there's nothing to combine." }) : null,
+    frozen.length ? h("div", { class: "notice warn", text: `${frozen.length} coin${frozen.length === 1 ? " is" : "s are"} marked "don't spend" by a label file from another wallet. Icebox shows the mark, but can't yet keep a coin out of an ordinary payment.` }) : null,
+  ));
+
+  const table = h("table", { class: "coins" + (canSpend ? "" : " no-pick") },
+    h("thead", {}, h("tr", {},
+      canSpend ? h("th", { class: "pick" }, h("input", {
+        type: "checkbox", "aria-label": "Choose all coins",
+        checked: chosen.length === coins.length,
+        onchange: (e) => { w.coinPick = new Set(e.target.checked ? coins.map((c) => c.outpoint) : []); render(); },
+      })) : null,
+      h("th", { text: "Coin" }), h("th", { class: "num", text: "Amount" }), h("th", { text: "Status" }),
+    )),
+    h("tbody", {}, ...coins.map((c) => {
+      const inherited = c.tx_label || c.address_label;
+      return h("tr", { class: pick.has(c.outpoint) ? "picked" : "" },
+        canSpend ? h("td", { class: "pick" }, h("input", {
+          type: "checkbox", "aria-label": "Choose this coin",
+          checked: pick.has(c.outpoint),
+          onchange: (e) => { if (e.target.checked) pick.add(c.outpoint); else pick.delete(c.outpoint); render(); },
+        })) : null,
+        h("td", { class: "tx-cell coin" },
+          h("span", { class: "mono small", title: c.outpoint, text: c.address ? c.address.slice(0, 12) + "…" + c.address.slice(-6) : shortId(c.outpoint) }),
+          labelEditor(w, "output", c.outpoint, c.label),
+          !c.label && inherited ? h("span", { class: "muted small", text: "from: " + inherited }) : null,
+        ),
+        h("td", { class: "num amt", text: money(fmtSats(c.value)) }),
+        h("td", { class: "status" },
+          h("span", { class: "pill" + (c.confirmations >= 1 ? " ok" : " warn"), text: c.confirmations >= 1 ? `${c.confirmations} conf` : "pending" }),
+          c.spendable ? null : h("span", { class: "pill bad", title: "Marked \"don't spend\" by another wallet's label file", text: "don't spend" }),
+        ),
+      );
+    })),
+  );
+  wrap.append(h("div", { class: "card" }, table));
+
+  if (canSpend) {
+    const c = w.combine = w.combine || { feerate: "", busy: false };
+    wrap.append(h("div", { class: "card stack" },
+      h("h3", { text: "Combine chosen coins" }),
+      h("p", { class: "muted small", text: "Moves the chosen coins back into this wallet as one coin. Doing this while fees are low means later payments spend fewer coins and cost less. Combining links those coins together for anyone watching the blockchain, so don't combine coins you'd rather keep apart (for example, ones from different customers or sources)." }),
+      h("div", { class: "row" },
+        h("strong", { text: chosen.length ? `${chosen.length} chosen · ${money(fmtSats(chosenTotal))}` : "No coins chosen" }),
+      ),
+      h("label", { class: "field" }, "Fee rate (sat/vB)",
+        h("input", { id: "combine-fee", type: "number", min: "1", step: "0.1", value: c.feerate, oninput: (e) => (c.feerate = e.target.value) }),
+      ),
+      h("div", { class: "row" },
+        h("button", {
+          class: "btn primary",
+          disabled: c.busy || chosen.length < 2,
+          onclick: async () => {
+            const feerate = Number(c.feerate);
+            if (!(feerate >= 1)) return toast("Enter a fee rate of at least 1 sat/vB", true);
+            c.busy = true; render();
+            const preview = await call("prepare_consolidate", { keyId: key.key_id, outpoints: chosen.map((x) => x.outpoint), feerate });
+            c.busy = false;
+            if (preview) {
+              w.send = freshSend();
+              w.send.preview = preview;
+              const connected = key.devices.filter((d) => isConnected(d.id)).map((d) => d.id);
+              const rest = key.devices.map((d) => d.id).filter((id) => !connected.includes(id));
+              w.send.signers = connected.concat(rest).slice(0, key.threshold);
+              w.tab = "send";
+            }
+            render();
+          },
+        }, c.busy ? "Working…" : chosen.length < 2 ? "Choose two or more coins" : `Review combining ${chosen.length} coins`),
+      ),
+    ));
+  }
+  return wrap;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Labels: short notes on a payment, an address or a coin, kept on this computer and exported in
+// the BIP-329 format that Sparrow, BTCPay Server and other wallets read.
+// ---------------------------------------------------------------------------------------------
+
+/** The label for one thing, with an inline editor. Only one label is edited at a time. */
+function labelEditor(w, kind, ref, current) {
+  const e = w.labelEdit;
+  if (e && e.kind === kind && e.ref === ref) {
+    const save = async () => {
+      if (w.labelEdit !== e) return;
+      w.labelEdit = null;
+      if (e.value.trim() !== (current || "")) {
+        const ok = await call("set_label", { keyId: w.keyId, kind, reference: ref, label: e.value });
+        if (ok !== undefined) {
+          if (kind === "addr") {
+            if (w.address && w.address.address === ref) w.address.label = e.value.trim() || null;
+            const key = walletInfo(w.keyId);
+            if (key) loadAddresses(w, key, true);
+          }
+          refreshWallet();
+        }
+      }
+      render();
+    };
+    return h("span", { class: "label-edit" },
+      h("input", {
+        id: "label-edit", type: "text", maxlength: "255", value: e.value, placeholder: "Add a note",
+        "aria-label": "Label",
+        oninput: (ev) => { e.value = ev.target.value; },
+        onkeydown: (ev) => {
+          if (ev.key === "Enter") save();
+          if (ev.key === "Escape") { w.labelEdit = null; render(); }
+        },
+      }),
+      h("button", { class: "btn small", onclick: save }, "Save"),
+      h("button", { class: "btn small ghost", onclick: () => { w.labelEdit = null; render(); } }, "Cancel"),
+    );
+  }
+  return h("button", {
+    class: "link label-text" + (current ? "" : " muted"),
+    title: current ? "Edit label" : "Add a label (kept only in this copy of Icebox)",
+    onclick: (ev) => {
+      ev.stopPropagation();
+      w.labelEdit = { kind, ref, value: current || "" };
+      render();
+      later(0, () => { const el = $("label-edit"); if (el) el.focus(); });
+    },
+  }, current ? "✎ " + current : "+ label");
+}
+
+/** A short "More" fold for the longer explanation behind a setting, so the Details tab stays
+ *  scannable. Its open state is the browser's own (<details>), kept across re-renders by key. */
+function more(id, ...children) {
+  const open = (state.openMore = state.openMore || {})[id];
+  return h("details", { class: "more", open: !!open, ontoggle: (e) => { state.openMore[id] = e.target.open; } },
+    h("summary", { text: "More" }),
+    h("div", { class: "muted small stack" }, ...children),
+  );
+}
+
+/** A file name from the wallet's name and today's date, e.g. "Shop labels 2026-11-27.jsonl". */
+function exportName(key, what, ext) {
+  const day = new Date().toISOString().slice(0, 10);
+  return `${key.name} ${what} ${day}.${ext}`;
+}
+
+async function saveExport(w, fileName, contents) {
+  if (state.demo) {
+    w.exported = { demo: true, name: fileName, bytes: contents.length };
+    render();
+    return;
+  }
+  const path = await call("save_export", { fileName, contents });
+  if (path) { w.exported = { path }; render(); }
+}
+
+async function exportLabels(key, w) {
+  const text = await call("export_labels", { keyId: key.key_id });
+  if (text === undefined) return;
+  if (!text) return toast("This wallet has no labels yet", true);
+  await saveExport(w, exportName(key, "labels", "jsonl"), text);
+}
+
+async function exportHistory(key, w) {
+  // With prices on (and a fetched currency), add each payment's value on its day.
+  const s = state.prices.settings;
+  let currency = null, prices = null;
+  if (s && s.enabled && s.currency !== "MANUAL" && !state.demo && key.network === "bitcoin") {
+    w.exporting = true; render();
+    try {
+      prices = await dailyPrices(s.currency);
+      if (state.prices.price) prices[new Date().toISOString().slice(0, 10)] = state.prices.price;
+      currency = s.currency;
+    } catch (e) {
+      toast(`Couldn't get past prices (${e.message || e}), so the file has no value column.`, true);
+    }
+    w.exporting = false;
+  }
+  const csv = await call("history_csv", { keyId: key.key_id, currency, dailyPrices: prices });
+  if (csv) await saveExport(w, exportName(key, "history", "csv"), csv);
+  else render();
+}
+
+async function importLabels(key, w, file) {
+  if (!file) return;
+  let text;
+  try { text = await file.text(); } catch (e) { return toast("Couldn't read that file: " + e, true); }
+  const r = await call("import_labels", { keyId: key.key_id, text });
+  if (r) {
+    w.imported = r;
+    w.addresses = null;
+    if (w.address) { const a = await call("address", { keyId: key.key_id, index: w.address.index }); if (a) w.address = a; }
+    await refreshWallet();
+  }
+}
+
+function renderLabelsAndExports(key, w) {
+  const isAndroid = /Android/.test(navigator.userAgent || "");
+  const box = h("div", { class: "stack" },
+    h("h3", { text: "Labels and exports" }),
+    h("p", { class: "muted small", text: "Your notes on payments and addresses, kept only here. Move them to other wallets as a BIP-329 file, or save the history as a spreadsheet." }),
+    h("div", { class: "row" },
+      h("button", { class: "btn", onclick: () => exportLabels(key, w) }, "Export labels"),
+      h("label", { class: "btn ghost file-btn" }, "Import labels…",
+        h("input", {
+          type: "file", accept: ".jsonl,.json,.txt,application/json,text/plain", hidden: true,
+          onchange: (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; importLabels(key, w, f); },
+        }),
+      ),
+      h("button", { class: "btn", disabled: w.exporting, onclick: () => exportHistory(key, w) }, w.exporting ? "Getting past prices…" : "Export history (CSV)"),
+    ),
+  );
+  if (w.imported) {
+    const r = w.imported;
+    const parts = [`${r.imported} label${r.imported === 1 ? "" : "s"} imported`];
+    if (r.unchanged) parts.push(`${r.unchanged} already the same`);
+    if (r.skipped) parts.push(`${r.skipped} line${r.skipped === 1 ? "" : "s"} skipped (not a label Icebox could read)`);
+    box.append(h("div", { class: "notice" }, parts.join(", ") + ". ",
+      h("button", { class: "link", onclick: () => { w.imported = null; render(); } }, "Dismiss")));
+  }
+  if (w.exported) {
+    const x = w.exported;
+    box.append(h("div", { class: "notice" },
+      x.demo ? `Demo mode: "${x.name}" would be saved to your Downloads folder (nothing is saved in the demo). ` : `Saved to ${x.path}. `,
+      !x.demo && !isAndroid ? h("button", { class: "link", onclick: () => call("show_file", { path: x.path }) }, "Show in folder") : null,
+      !x.demo && !isAndroid ? " · " : null,
+      h("button", { class: "link", onclick: () => { w.exported = null; render(); } }, "Dismiss"),
+    ));
+  }
+  return box;
+}
+
 async function loadDescriptor() {
   const w = state.wallet;
   if (!w || w.descriptor) return;
-  const [d, qr, btcpay] = await Promise.all([
+  const [d, qr, btcpay, ahead] = await Promise.all([
     call("descriptor", { keyId: w.keyId }),
     call("descriptor_qr", { keyId: w.keyId }),
     call("btcpay_scheme", { keyId: w.keyId }),
+    call("btcpay_watch", { keyId: w.keyId }),
   ]);
-  if (d) { w.descriptor = d; w.descriptorQr = qr || null; w.btcpay = btcpay || null; render(); }
+  if (d) { w.descriptor = d; w.descriptorQr = qr || null; w.btcpay = btcpay || null; w.btcpayAhead = ahead || 0; render(); }
 }
 
 function renderDetails(key, w) {
@@ -1754,6 +2352,7 @@ function renderDetails(key, w) {
       ),
       w.descriptorQr ? h("img", { class: "qr", src: w.descriptorQr, alt: "QR code of the watch-only descriptor" }) : null,
     ) : h("p", { class: "muted", text: "Loading…" }),
+    renderLabelsAndExports(key, w),
     renderBtcpay(key, w),
     renderWatchCode(key, w),
     key.watch_only ? renderRemoveWatchOnly(key) : renderRemoveWallet(key, w),
@@ -1765,7 +2364,7 @@ function renderDetails(key, w) {
 function renderWatchCode(key, w) {
   const box = h("div", { class: "stack" },
     h("h3", { text: "Watch this wallet on another computer" }),
-    h("p", { class: "muted small", text: "Add this code on another computer with Icebox (Add watch-only wallet) to see the balance, history and receive addresses there, with no devices. It can't spend, but it reveals every payment, so only share it with people you'd show your balance to." }),
+    h("p", { class: "muted small", text: "See this wallet in Icebox elsewhere (Add watch-only wallet), with no devices. It can't spend, but it shows every payment." }),
   );
   if (!w.watchCode) {
     box.append(h("div", { class: "row" }, h("button", {
@@ -1812,6 +2411,8 @@ function renderRemoveWatchOnly(key) {
 
 /** A "📷 Scan" button that opens the scanner and calls onResult with the text found. */
 function scanButton(onResult, label) {
+  // Not on Android yet: the app doesn't ask for camera permission there.
+  if (/Android/.test(navigator.userAgent || "")) return null;
   return h("button", {
     class: "btn ghost", type: "button", title: "Scan a QR code with this computer's camera",
     onclick: (e) => { e.preventDefault(); openScanner(onResult); },
@@ -1959,16 +2560,69 @@ function renderBtcpay(key, w) {
   if (!w.btcpay) return null;
   return h("div", { class: "stack" },
     h("h3", { text: "Accept payments with BTCPay Server" }),
-    h("p", { class: "muted small", text: "In BTCPay: your store → Wallets → Bitcoin → Connect an existing wallet → Enter extended public key, and paste this. BTCPay then gives each invoice its own address from this wallet. It can see payments but never spend them." }),
+    h("p", { class: "muted small", text: "Paste this in BTCPay: your store → Wallets → Bitcoin → Connect an existing wallet → Enter extended public key. BTCPay can see payments, never spend them." }),
     h("div", { class: "address-box small", text: w.btcpay }),
     h("div", { class: "row" }, h("button", { class: "btn", onclick: () => navigator.clipboard.writeText(w.btcpay).then(() => toast("Copied")) }, "Copy for BTCPay")),
     h("div", { class: "notice" },
       h("strong", { text: "Before taking real payments: " }),
-      "check that the first address BTCPay shows matches this wallet's address #0 on the Receive tab. ",
-      "Use a wallet just for the shop: BTCPay and Icebox both hand out addresses from it, so using it for other payments too can give two payers the same address. ",
-      key.network === "bitcoin" ? "Anyone who has this key can see every payment to the wallet, so only paste it into a BTCPay server you run or trust." : "",
+      "check BTCPay's first address matches address #0 on the Receive tab, and use this wallet only for the shop.",
     ),
+    more("btcpay",
+      h("p", { text: "BTCPay and Icebox both hand out addresses from the wallet, so using it for other payments too can give two payers the same address." }),
+      key.network === "bitcoin" ? h("p", { text: "Anyone who has this key can see every payment to the wallet, so only paste it into a BTCPay server you run or trust." }) : null,
+    ),
+    renderBtcpayWatch(key, w),
   );
+}
+
+// BTCPay gives each invoice a new address, and unpaid invoices leave gaps. Icebox normally asks
+// its server about 50 addresses past the last one handed out, so a shop wallet needs it to look
+// further, or a payment after a long run of unpaid invoices wouldn't show here.
+function renderBtcpayWatch(key, w) {
+  const ahead = w.btcpayAhead || 0;
+  const set = async (n) => {
+    if (await call("set_btcpay_watch", { keyId: key.key_id, ahead: n }) !== undefined) {
+      w.btcpayAhead = n; w.btcpayDraft = null; w.addresses = null;
+      toast(n ? `Watching ${n} addresses ahead` : "BTCPay watching switched off");
+      render();
+    }
+  };
+  // Switching on marks addresses as handed out, which can't be undone, so the amount is chosen
+  // first and only applied with the button. Once on, it can only be widened.
+  const draft = w.btcpayDraft;
+  const choices = [100, 250, 500, 1000].filter((n) => !ahead || n >= ahead);
+  const picker = (value, onchange) => h("select", { id: "btcpay-ahead", onchange },
+    ...choices.map((n) => h("option", { value: String(n), selected: n === value }, `${n} addresses${n === 250 ? " (suggested)" : ""}`)));
+  const box = h("div", { class: "stack" },
+    h("label", { class: "row check-row" },
+      h("input", {
+        type: "checkbox", checked: ahead > 0 || draft !== null && draft !== undefined,
+        onchange: (e) => {
+          if (ahead) { if (!e.target.checked) set(0); }
+          else { w.btcpayDraft = e.target.checked ? 250 : null; render(); }
+        },
+      }),
+      h("span", { text: "Used with BTCPay Server: watch further ahead" }),
+    ),
+    h("p", { class: "muted small", text: "So a payment still shows here after a long run of unpaid invoices." }),
+  );
+  if (!ahead && draft) {
+    box.append(
+      h("label", { class: "field" }, "How far ahead", picker(draft, (e) => { w.btcpayDraft = Number(e.target.value); })),
+      h("div", { class: "row" },
+        h("button", { class: "btn small primary", onclick: () => set(w.btcpayDraft) }, "Start watching"),
+        h("button", { class: "btn small ghost", onclick: () => { w.btcpayDraft = null; render(); } }, "Cancel"),
+      ),
+    );
+  } else if (ahead) {
+    box.append(h("label", { class: "field" }, "Watching ahead", picker(ahead, (e) => set(Number(e.target.value)))));
+  }
+  box.append(more("btcpay-watch",
+    h("p", { text: "BTCPay gives each invoice its own address, and unpaid invoices leave addresses nobody pays. Icebox normally watches 50 addresses past the last one in use; with this on it watches further, and counts those addresses as handed out, so its own Receive tab starts after them and never clashes with BTCPay." }),
+    h("p", { text: "Your Electrum server is told about more of your addresses, so for the most privacy use your own server. A newly watched address shows up after the next block." }),
+    h("p", { text: "This can't be undone or narrowed: addresses already counted as handed out stay that way, and switching it off only stops watching further ahead. That's harmless." }),
+  ));
+  return box;
 }
 
 // Removing a wallet only forgets it here, like the official app's "Delete wallet". The devices keep
@@ -2142,6 +2796,7 @@ function renderSettings() {
     ));
   }
   page.append(card);
+  page.append(renderPriceSettings());
   page.append(h("div", { class: "card" },
     h("h2", { text: "Privacy" }),
     h("label", { class: "row check-row" },
@@ -2156,13 +2811,14 @@ function renderSettings() {
   ));
   page.append(h("div", { class: "card" },
     h("h2", { text: "Restore default settings" }),
-    h("p", { class: "muted", text: "Puts every network's Electrum servers back to the defaults and shows amounts again. Wallets, devices and saved restores aren't touched." }),
+    h("p", { class: "muted", text: "Puts every network's Electrum servers back to the defaults, shows amounts again and switches prices off. Wallets, devices, labels and saved restores aren't touched." }),
     h("div", { class: "row" }, h("button", {
       class: "btn small", disabled: st.resetting,
       onclick: async () => {
         st.resetting = true; render();
         await restoreDefaultServers(NETWORKS.filter((n) => st.servers[n]), true);
         if (state.hideBalance) await toggleHideBalance();
+        if (state.prices.settings && state.prices.settings.enabled) await savePriceSettings({ enabled: false });
         st.resetting = false; render();
       },
     }, st.resetting ? "Restoring…" : "Restore all defaults")),
@@ -2235,9 +2891,14 @@ function onEvent(e) {
     case "wallet_changed":
       if (state.wallet && state.wallet.keyId === e.key_id) refreshWallet();
       return;
-    case "chain":
+    case "chain": {
+      // Reconnecting to the server can bring news the page hasn't fetched yet.
+      const before = state.chain[e.network];
       state.chain[e.network] = e;
+      if (e.state === "connected" && (!before || before.state !== "connected") &&
+          state.wallet && state.wallet.data && state.wallet.data.network === e.network) refreshWallet();
       break;
+    }
     case "restore_scan_changed":
       scheduleRestoreRefresh();
       return;
@@ -2307,6 +2968,14 @@ document.addEventListener("keydown", (e) => {
   runMenu(id);
 });
 
+// Belt and braces for the wallet page: refresh every 30 s while it's open, and as soon as the app
+// comes back to the front (Android pauses the page in the background, and events sent meanwhile
+// can be missed).
+setInterval(() => { if (state.view.name === "wallet" && !document.hidden) refreshWallet(); }, 30000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && state.view.name === "wallet") refreshWallet();
+});
+
 async function main() {
   $("new-wallet-btn").addEventListener("click", startWizard);
   const restoreBtn = $("restore-btn");
@@ -2315,6 +2984,15 @@ async function main() {
   if (watchAddBtn) watchAddBtn.addEventListener("click", openWatchAdd);
   $("devices-btn").addEventListener("click", () => { state.view = { name: "devices" }; render(); });
   $("settings-btn").addEventListener("click", openSettings);
+  // Phones: the menu button opens the drawer; choosing anything in it closes it again.
+  fixAndroidInsets();
+  if ($("drawer-btn")) {
+    $("drawer-btn").addEventListener("click", () => setDrawer(!document.body.classList.contains("drawer-open")));
+    $("drawer-backdrop").addEventListener("click", () => setDrawer(false));
+    $("mobile-devices").addEventListener("click", () => { setDrawer(false); state.view = { name: "devices" }; render(); });
+    for (const b of document.querySelectorAll("[data-menu]")) b.addEventListener("click", () => runMenu(b.dataset.menu));
+    document.querySelector(".sidebar").addEventListener("click", (e) => { if (e.target.closest("button")) setDrawer(false); });
+  }
 
   if (!tauri) {
     state.startupError = "This page only works inside the Icebox app.";
@@ -2339,6 +3017,7 @@ async function main() {
   state.savedRestores = (await call("saved_restores")) || [];
   state.watchOnly = (await call("watch_only_wallets")) || [];
   state.hideBalance = (await call("hide_balance")) === true;
+  await loadPriceSettings();
   state.ready = true;
   if (state.keys.length) openWallet(state.keys[0].key_id);
   else render();

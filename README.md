@@ -4,7 +4,7 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/amisatoshi/icebox/badge)](https://scorecard.dev/viewer/?uri=github.com/amisatoshi/icebox)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
-A self-built desktop wallet for [Frostsnap](https://frostsnap.com) devices, for Windows, macOS and Linux.
+A self-built wallet for [Frostsnap](https://frostsnap.com) devices, for Windows, macOS and Linux, with an Android beta.
 
 Icebox is a **third-party coordinator**: it does the job the official Frostsnap app does (talking
 to the devices over USB, running the FROST key generation and signing protocol, keeping track of
@@ -72,32 +72,18 @@ sending, restoring, backups, BTCPay Server and troubleshooting, with screenshots
 - Export the watch-only descriptor (for Sparrow, Bitcoin Core, etc.)
 - Set Electrum servers per network
 
-**New in 0.2:**
+**New in 0.5.0:**
 
-- Menu bar: File, Wallet, View and Help, with keyboard shortcuts (Help → Keyboard shortcuts lists
-  them)
-- **Demo mode** (Help → Try demo mode, or the button on an empty Devices page): pretend devices
-  and test coins, so anyone can try the whole flow without hardware. Nothing touches real devices,
-  wallets or the network, and leaving demo mode restarts the app clean.
-- Each device's **firmware version** is shown. Devices on older or unrecognised firmware get a
-  warning, and creating a wallet with them needs an explicit "I understand" tick.
-- **Erase device**, confirmed on the device's own screen, with a warning if it holds a wallet share
-- **Restore from devices** (sidebar, or Wallet → Restore from devices): plug in a wallet's devices,
-  together or one after another, and Icebox asks each which wallet shares it holds, groups them by
-  wallet ("Cold storage: 2 found · 2 needed to restore") and rebuilds the wallet in one click. Use it for wallets
-  made in the official app. Devices are only read; nothing on them changes. Uses the official
-  `frostsnap_core` restoration code.
-- Wallets are labelled "2 to sign" rather than "2-of-3": a wallet restored from some of its devices
-  can't know how many devices exist in total.
-- **Check a backup**: enter your written-down words on the device; it says whether they match
-- All receive addresses, with "used" marks to discourage reuse; descriptor as a QR code
-- **BTCPay Server**: copy the wallet's key in BTCPay's format (`xpub…-[taproot]`) so a shop can
-  take payments straight into the wallet; spending still needs the devices
-- About box (version, Frostsnap commit, expected firmware, data folder)
-- Transactions in History open on mempool.space in your browser
-- Only one copy of Icebox runs at a time, and it remembers its window size and position
-- One wallet per device, as in the official app: new wallets use blank devices
-- Remove a wallet from Icebox (the devices keep their shares; restore it any time)
+- **Android (beta)**: the same app on Android phones, with Frostsnap devices on the USB-C port.
+  See [Android](#android-beta) below
+- **Labels** on payments, addresses and coins, a **Note** when sending, and **BIP-329**
+  import/export to move them to and from Sparrow, BTCPay Server and other wallets
+- **Export history as CSV**, with each payment's value on the day when prices are on
+- **Coins tab**: see every coin and **combine chosen coins** into one
+- **Prices**, off until you switch them on: GBP, USD, EUR, AUD and more from mempool.space, MYR
+  via the ECB's rate, the Gulf currencies via their dollar pegs, or your own price
+- **Used with BTCPay Server**: watch further ahead, so payments after many unpaid invoices aren't
+  missed
 
 **New in 0.4.1:**
 
@@ -132,6 +118,48 @@ sending, restoring, backups, BTCPay Server and troubleshooting, with screenshots
 - macOS builds carry an ad-hoc signature, so macOS shows its normal "unidentified developer"
   prompt instead of calling the app damaged
 
+**New in 0.2:**
+
+- Menu bar: File, Wallet, View and Help, with keyboard shortcuts (Help → Keyboard shortcuts lists
+  them)
+- **Demo mode** (Help → Try demo mode, or the button on an empty Devices page): pretend devices
+  and test coins, so anyone can try the whole flow without hardware. Nothing touches real devices,
+  wallets or the network, and leaving demo mode restarts the app clean.
+- Each device's **firmware version** is shown. Devices on older or unrecognised firmware get a
+  warning, and creating a wallet with them needs an explicit "I understand" tick.
+- **Erase device**, confirmed on the device's own screen, with a warning if it holds a wallet share
+- **Restore from devices** (sidebar, or Wallet → Restore from devices): plug in a wallet's devices,
+  together or one after another, and Icebox asks each which wallet shares it holds, groups them by
+  wallet ("Cold storage: 2 found · 2 needed to restore") and rebuilds the wallet in one click. Use it for wallets
+  made in the official app. Devices are only read; nothing on them changes. Uses the official
+  `frostsnap_core` restoration code.
+- Wallets are labelled "2 to sign" rather than "2-of-3": a wallet restored from some of its devices
+  can't know how many devices exist in total.
+- **Check a backup**: enter your written-down words on the device; it says whether they match
+- All receive addresses, with "used" marks to discourage reuse; descriptor as a QR code
+- **BTCPay Server**: copy the wallet's key in BTCPay's format (`xpub…-[taproot]`) so a shop can
+  take payments straight into the wallet; spending still needs the devices
+- About box (version, Frostsnap commit, expected firmware, data folder)
+- Transactions in History open on mempool.space in your browser
+- Only one copy of Icebox runs at a time, and it remembers its window size and position
+- One wallet per device, as in the official app: new wallets use blank devices
+- Remove a wallet from Icebox (the devices keep their shares; restore it any time)
+
+## Android (beta)
+
+Icebox for Android is released alongside the desktop app, as `Icebox_X.Y.Z_android-beta.apk` on
+each [GitHub release](https://github.com/amisatoshi/icebox/releases). Install it on the phone
+(Android 7 or newer, 64-bit), plug a Frostsnap device into the USB-C port and tap OK when Android
+asks. See the [Android guide](docs/guide/14-android.md).
+
+The APK is built from the tagged source by the release workflow, then signed offline. Android
+only accepts updates signed with the same certificate, so check it when you first install:
+`apksigner verify --print-certs` should show this SHA-256 fingerprint:
+
+```
+SHA256: CC:78:2E:B8:C8:1F:CC:22:B5:46:50:9B:0C:F3:A8:3E:36:F4:C4:29:2C:EF:8A:DB:B1:59:9D:E4:11:86:74:63
+```
+
 **Not yet:** firmware upgrades, restoring from written-down backup words, PSBT import/export, Nostr keys,
 accepting self-signed TLS certificates (use `tcp://` for a node on your own network, or a server with
 a proper certificate). For any of those, use the official app.
@@ -156,6 +184,12 @@ sudo udevadm control --reload && sudo udevadm trigger
 ```
 
 Other distributions: see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+
+### Android
+
+See [docs/dev/android.md](docs/dev/android.md) (Android Studio, the NDK, then
+`cargo tauri android init` and `cargo tauri android dev`), and
+[docs/dev/android-release.md](docs/dev/android-release.md) for how releases are signed.
 
 ### Windows 10/11
 

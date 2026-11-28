@@ -6,6 +6,56 @@ All notable changes to Icebox are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-28
+
+### Added
+- **Android (beta).** Icebox runs on Android phones (Android 7+, arm64), talking to Frostsnap
+  devices over USB-C through Android's USB host API (a small Kotlin plugin,
+  `crates/tauri-plugin-icebox-usb`, hands Rust a file descriptor for `cdc_acm_usb`, as the official
+  Android app does). Same version and release as the desktop app; the APK is built and attested by
+  the release workflow, unsigned, and signed offline by the maintainer
+  (`docs/dev/android-release.md`, `dev/sign-android.sh`). Phone layout: top bar, drawer sidebar,
+  two-line history. `versionCode` is `major×10000 + minor×100 + patch` (500), checked by
+  `dev/check-versions.py` in CI.
+- **Labels** on payments, addresses and coins, edited in place (History, Receive, Coins), plus a
+  **Note** on the Send page that becomes the payment's label when signing starts (removed again if
+  the payment is cancelled). Stored in Icebox's own `icebox_labels` table; removed with the
+  wallet.
+- **BIP-329 import and export** of labels (Details → Labels and exports). Every record type is
+  kept, including other wallets' `spendable` marks, so a file passes through Icebox unchanged;
+  `origin` is written from the wallet's descriptor.
+- **Export history as CSV**: UTC date, txid, amount and fee in BTC (exact, no floating point),
+  status and label, with spreadsheet-formula guarding on text cells. With prices on, a value
+  column at each day's price, from the full price history in one request (never per-payment
+  lookups). Files go to Downloads (or the data folder) and are never overwritten.
+- **Coins tab**: every coin with its address, amount, confirmations and labels (its own, or the
+  payment's or address's), and **Combine chosen coins** into one, signed like a payment
+  (`plan_consolidate`). Paying from chosen coins needs `plan_send_from_coins` in
+  `frostsnap_coordinator`, proposed upstream.
+- **Prices (opt-in)**, Settings → Prices, off by default: GBP, USD, EUR, AUD, CAD, CHF and JPY from
+  mempool.space; MYR from the euro price and the ECB's rate (frankfurter.dev); AED, SAR, QAR, BHD
+  and OMR from the dollar price and their fixed pegs; or a price typed in for any currency. Shown
+  under the balance, on Coins and on Send, for mainnet wallets only. Clicking the balance swaps
+  the big figure between BTC and the currency (remembered). Fetched by the window; CSP
+  `connect-src` adds `https://mempool.space` and `https://api.frankfurter.dev`.
+- **Used with BTCPay Server: watch further ahead** (Details). Reveals receive addresses up to
+  100/250/500/1000 past the highest one in use, so the chain client subscribes to them and
+  payments after long runs of unpaid invoices aren't missed (the subscription window is otherwise
+  50). Icebox's own Receive addresses then start after them. Switching it off doesn't undo
+  addresses already marked as handed out; the settings text says so.
+- CI builds the Android APK on every pull request.
+
+### Changed
+- On phones, the restored-wallet notice is one short line, and each backup row shows its status
+  next to the device name with the buttons underneath.
+- The address list shows the newest 10 and every used or labelled address when there are more than
+  60 (as there are when watching ahead for BTCPay), with **Show all**.
+- **Restore all defaults** also switches prices off.
+
+### Fixed
+- The Mainnet badge stretched into a tall oval on phones (it shared a class name with the page
+  container).
+
 ## [0.4.1] - 2026-11-25
 
 ### Added
