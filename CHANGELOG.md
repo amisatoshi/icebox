@@ -6,7 +6,7 @@ All notable changes to Icebox are recorded here. The format follows
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-11-26
+## [0.5.0] - 2026-11-28
 
 ### Added
 - **Android (beta).** Icebox runs on Android phones (Android 7+, arm64), talking to Frostsnap
