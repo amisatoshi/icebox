@@ -50,11 +50,42 @@ fi
 
 "$apksigner" sign --ks "$keystore" --ks-key-alias "$alias" --out "$out" "$aligned"
 rm -f "$out.idsig"
-
 echo
 echo "Signed: $out"
-"$apksigner" verify --print-certs "$out" | grep -E "Signer #1 certificate (DN|SHA-256)"
+
+# Verify the signed APK. Newer build-tools label the lines "V3.0 Signer: ..." where older ones say
+# "Signer #1 ...", and on Windows the output has CRLF line endings, so match loosely and never let
+# a missing line stop the script before the checks below.
+report="$("$apksigner" verify --verbose --print-certs "$out" 2>/dev/null | tr -d '\r')" || {
+  echo "apksigner couldn't verify the signed APK" >&2
+  exit 1
+}
+echo "$report" | grep -E "^Verified using v[234]" || true
+if ! echo "$report" | grep -q "^Verified using v2 scheme.*: true"; then
+  echo "WARNING: no v2 signature; phones on Android 7 and 8 won't install it." >&2
+fi
+digest="$(echo "$report" | grep -m1 -E "certificate SHA-256 digest:" | sed 's/.*digest: *//' | tr 'A-F' 'a-f')"
+[ -n "$digest" ] || { echo "couldn't read the certificate fingerprint from apksigner" >&2; exit 1; }
+fingerprint="$(echo "$digest" | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$//')"
+echo "Certificate SHA-256: $fingerprint"
+
+# Compare with the fingerprint published in the README, if it's there.
+readme="$(cd "$(dirname "$0")/.." && pwd)/README.md"
+published="$(grep -o -E '([0-9A-F]{2}:){31}[0-9A-F]{2}' "$readme" 2>/dev/null | head -n1 || true)"
+if [ -z "$published" ]; then
+  echo "Note: no fingerprint in README.md yet; publish this one there."
+elif [ "$published" = "$fingerprint" ]; then
+  echo "Matches the fingerprint in README.md."
+else
+  echo "MISMATCH: README.md publishes $published" >&2
+  echo "This APK was signed with a different key, so it's been deleted. Check the keystore." >&2
+  rm -f "$out"
+  exit 1
+fi
+
+# The line for SHA256SUMS: hash, two spaces, file name (no path, no Windows "*" marker).
+name="$(basename "$out")"
+sum="$(cd "$(dirname "$out")" && sha256sum "$name" | cut -d' ' -f1)"
 echo
-sha256sum "$out"
-echo
-echo "Check the certificate SHA-256 above matches the one in the README before uploading."
+echo "Add this line to SHA256SUMS on the release:"
+echo "$sum  $name"

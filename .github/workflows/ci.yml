@@ -99,13 +99,26 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
+      # Keeps Gradle's downloads between runs, so fewer requests reach Maven Central. Written by
+      # runs on main, read by pull requests. The open-source "basic" cache, not the commercial one.
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-provider: basic
+          add-job-summary: never
       - name: Build the APK (unsigned)
         shell: bash
         run: |
           export JAVA_HOME="$JAVA_HOME_17_X64"
           export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
           cargo tauri android init --ci
-          cargo tauri android build --apk --target aarch64 --ci
+          # Maven Central sometimes rate-limits GitHub's runners ("429 Too Many Requests"); Gradle
+          # then fails before building anything. Try up to three times, waiting in between.
+          for attempt in 1 2 3; do
+            cargo tauri android build --apk --target aarch64 --ci && break
+            [ "$attempt" = 3 ] && exit 1
+            echo "::warning::Android build attempt $attempt failed; retrying in 90 seconds"
+            sleep 90
+          done
           find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -print
 
   ui:
