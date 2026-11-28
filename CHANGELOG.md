@@ -6,6 +6,14 @@ All notable changes to Icebox are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- `dev/sign-android.sh` stopped after signing on newer Android build-tools (they label the
+  certificate lines differently), so it never showed the fingerprint or the file's SHA-256. It now
+  shows both, checks the fingerprint against the README, warns if the v2 signature is missing, and
+  prints the line to add to `SHA256SUMS` (without the Windows `*` marker or a path).
+- Android builds in CI and the release workflow retry when Maven Central rate-limits Gradle's
+  downloads ("429 Too Many Requests"), and CI caches Gradle's downloads between runs.
+
 ## [0.5.0] - 2026-11-28
 
 ### Added
@@ -226,7 +234,8 @@ All notable changes to Icebox are recorded here. The format follows
   history over Electrum, receive with on-device address check, send with per-device signing and
   broadcast, watch-only descriptor, Electrum server settings.
 
-[Unreleased]: https://github.com/amisatoshi/icebox/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/amisatoshi/icebox/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/amisatoshi/icebox/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/amisatoshi/icebox/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/amisatoshi/icebox/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/amisatoshi/icebox/compare/v0.3.0...v0.3.1
