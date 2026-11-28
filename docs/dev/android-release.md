@@ -60,13 +60,14 @@ Never commit the keystore, never put it or its password in a GitHub secret, and 
    ```
 
    It checks the file against `SHA256SUMS-unsigned`, aligns it if needed, signs it (asking for the
-   password), verifies it, and prints the certificate fingerprint and the new file's SHA-256.
-   **Check the fingerprint matches the published one.**
+   password), verifies it, checks the certificate fingerprint against the one in the README (and
+   stops if they differ), and prints the exact line to add to `SHA256SUMS`. The Java "restricted
+   method" warnings it shows are harmless.
 5. Install the signed APK on a test phone over the previous release (`adb install -r …`) to be sure
    it updates in place, and give it a quick go with a device plugged in.
 6. On the draft release, upload `Icebox_X.Y.Z_android-beta.apk`, and add its line to
-   `SHA256SUMS`: download `SHA256SUMS`, append the line `sha256sum` printed, and upload it again
-   (replacing the old one).
+   `SHA256SUMS`: download `SHA256SUMS`, append the line the script printed (hash, two spaces, file
+   name), keep the file's line endings as LF, and upload it again (replacing the old one).
 7. In the release notes, under **Android (beta)**, give the certificate fingerprint and say it's a
    beta.
 8. Publish the release.
