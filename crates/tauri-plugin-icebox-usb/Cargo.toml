@@ -1,0 +1,15 @@
+[package]
+name = "tauri-plugin-icebox-usb"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "Android USB host access for Icebox: lists Frostsnap devices, asks for permission and opens them"
+links = "tauri-plugin-icebox-usb"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { workspace = true }

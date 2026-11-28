@@ -99,6 +99,55 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # The Android app (beta). Built here from the tagged source and attested like the installers,
+  # but UNSIGNED: the release key never touches GitHub. A maintainer downloads this artifact,
+  # signs it on their own computer (docs/dev/android-release.md) and adds the signed APK to the
+  # draft release. It is kept out of the draft itself, because an unsigned APK won't install.
+  android:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain and the Android target
+        shell: bash
+        run: |
+          channel="$(grep '^channel' rust-toolchain.toml | cut -d'"' -f2)"
+          rustup toolchain install "$channel" --profile minimal
+          rustup target add --toolchain "$channel" aarch64-linux-android
+          rustup show
+      - name: Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Versions agree
+        run: python3 dev/check-versions.py
+      - name: Build the APK (unsigned)
+        shell: bash
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          cargo tauri android init --ci
+          cargo tauri android build --apk --target aarch64 --ci
+          version="$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')"
+          apk="$(find src-tauri/gen/android/app/build/outputs/apk -name '*release-unsigned.apk' | head -n1)"
+          test -n "$apk" || { echo "::error::no unsigned release APK was built"; exit 1; }
+          mkdir dist-android
+          cp "$apk" "dist-android/Icebox_${version}_android-beta_unsigned.apk"
+          (cd dist-android && sha256sum * | tee SHA256SUMS-unsigned)
+      - name: Record build provenance
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist-android/*.apk
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-unsigned
+          path: dist-android/*
+          if-no-files-found: error
+
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
@@ -110,6 +159,7 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
+          pattern: icebox-*   # the desktop installers; the unsigned APK stays a workflow artifact
           merge-multiple: true
       - name: Checksums
         run: |

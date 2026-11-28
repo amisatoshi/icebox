@@ -1,6 +1,6 @@
 # FAQ
 
-[← Troubleshooting](12-troubleshooting.md) · [Contents](README.md)
+[← Android (beta)](14-android.md) · [Contents](README.md)
 
 **What is Icebox, and how is it different from the official Frostsnap app?**
 Icebox is an independent, open-source **coordinator**: the program on your computer that talks
@@ -91,4 +91,4 @@ suggest in [Discussions](https://github.com/amisatoshi/icebox/discussions).
 Try it on Signet and [report what's confusing](https://github.com/amisatoshi/icebox/issues),
 improve this guide with a pull request, or see [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
-[← Troubleshooting](12-troubleshooting.md) · [Contents](README.md)
+[← Android (beta)](14-android.md) · [Contents](README.md)

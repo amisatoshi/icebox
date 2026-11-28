@@ -2,11 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Icebox</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Phones: a top bar with a menu button; the sidebar becomes a drawer. Hidden on desktop. -->
+  <header class="mobilebar" id="mobilebar">
+    <button class="icon-btn" id="drawer-btn" aria-label="Menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <span class="mobile-title" id="mobile-title">Icebox</span>
+    <button class="chip" id="mobile-devices" aria-label="Devices"><span class="dot"></span><span id="mobile-device-count">0</span></button>
+  </header>
+  <div class="drawer-backdrop" id="drawer-backdrop"></div>
+
   <div class="shell">
     <aside class="sidebar">
       <div class="brand">
@@ -38,6 +48,18 @@
         <button class="link" id="devices-btn">Devices</button>
         <button class="link" id="settings-btn">Settings</button>
       </nav>
+
+      <!-- Phones only: what the desktop menu bar offers. -->
+      <section class="side-section more-section">
+        <div class="side-heading"><span>More</span></div>
+        <button class="link side-item" data-menu="hide_balances" id="more-hide">Hide amounts</button>
+        <button class="link side-item" data-menu="logs">Logs</button>
+        <button class="link side-item" data-menu="guide">User guide</button>
+        <button class="link side-item" data-menu="updates">Check for updates</button>
+        <button class="link side-item" data-menu="report_bug">Report a bug</button>
+        <button class="link side-item" data-menu="demo">Try demo mode</button>
+        <button class="link side-item" data-menu="about">About Icebox</button>
+      </section>
     </aside>
 
     <main class="main" id="main"></main>

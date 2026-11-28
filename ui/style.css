@@ -16,6 +16,11 @@
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
   --sans: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   color-scheme: dark;
+  /* Space taken by the phone's status bar and gesture bar (0 on desktop). On Android, app.js
+     sets a fallback when the webview doesn't report them. */
+  --inset-top: env(safe-area-inset-top, 0px);
+  --inset-bottom: env(safe-area-inset-bottom, 0px);
+  --bar-h: 56px;
 }
 
 * { box-sizing: border-box; }
@@ -143,7 +148,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 .pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
 .pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
 .pill.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, transparent); }
-.pill.main { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.pill.mainnet { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
 
 .notice { border-left: 3px solid var(--ice); background: var(--panel-2); padding: 12px 14px; border-radius: 6px; font-size: 14px; }
 .notice.warn { border-left-color: var(--warn); }
@@ -169,6 +174,15 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; padding: 8px 6px; border-bottom: 1px solid var(--line); }
 td { padding: 10px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
 td.num { font-family: var(--mono); text-align: right; white-space: nowrap; }
+th.num { text-align: right; }
+.fiat { font-family: var(--mono); font-size: 14px; text-align: right; }
+.field input#combine-fee { max-width: 12em; }
+/* Coins: a checkbox column for choosing coins to combine */
+table.coins .pick { width: 28px; }
+table.coins .pick input { margin: 2px 0 0; }
+table.coins tr.picked td { background: color-mix(in srgb, var(--ice) 8%, transparent); }
+table.coins td.status { white-space: nowrap; }
+table.coins td.status .pill + .pill { margin-left: 6px; }
 .pos { color: var(--ok); }
 .neg { color: var(--text); }
 
@@ -194,6 +208,10 @@ td.num { font-family: var(--mono); text-align: right; white-space: nowrap; }
 .erase-card { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
 .fw-override { margin-top: 8px; }
 .row .pill { flex: none; }
+.phone-only { display: none; }
+details.more > summary { cursor: pointer; color: var(--ice); font-size: 13px; width: fit-content; }
+details.more[open] > summary { margin-bottom: 6px; }
+.backup-row .stack .row { gap: 8px; }
 
 /* restore */
 .side-link { align-self: center; font-size: 13px; margin-top: 2px; }
@@ -211,6 +229,14 @@ td.num { font-family: var(--mono); text-align: right; white-space: nowrap; }
 .addr-row:hover { background: color-mix(in srgb, var(--ice) 6%, transparent); }
 .addr-row.current { background: color-mix(in srgb, var(--ice) 12%, transparent); }
 .addr-row .addr-short { flex: 1; }
+.addr-row .addr-label { max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Labels: a quiet link under a transaction id or address, or an inline editor. */
+.tx-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.label-text { font-size: 12px; text-align: left; max-width: 100%; overflow-wrap: anywhere; }
+.label-text.muted { color: var(--muted); opacity: 0.8; }
+.label-edit { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; max-width: 100%; }
+.label-edit input { min-width: 0; width: 14em; max-width: 100%; padding: 4px 8px; font-size: 13px; }
+table.history td:first-child { white-space: nowrap; }
 .struck { text-decoration: line-through; opacity: 0.7; }
 
 /* Linux USB-rule hint on the empty Devices page */
@@ -227,11 +253,17 @@ textarea { font-family: var(--mono, ui-monospace, monospace); font-size: 13px; r
 
 /* hide amounts (eye button next to the balance) */
 .balance-row { align-items: center; gap: 10px; }
+/* The balance is a button when it can swap between BTC and the user's currency. */
+.balance-swap { background: none; border: none; padding: 0; color: inherit; cursor: pointer; text-align: right; border-radius: 8px; }
+.balance-swap:hover .unit { color: var(--ice); }
+.balance-swap:focus-visible { outline: 2px solid var(--ice); outline-offset: 4px; }
 .icon-btn { background: none; border: 1px solid transparent; border-radius: 8px; color: var(--muted); padding: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .icon-btn:hover { color: var(--text); border-color: var(--line); background: var(--panel-2); }
 
 /* checkbox rows (settings, erase several devices) */
-.check-row { gap: 10px; cursor: pointer; }
+.check-row { gap: 10px; cursor: pointer; flex-wrap: nowrap; align-items: flex-start; }
+.check-row > span { flex: 1; min-width: 0; }
+.check-row input[type=checkbox] { margin-top: 3px; }
 .check-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--ice); flex: none; }
 .danger-zone .list { margin: 10px 0; }
 .danger-zone .notice { margin: 10px 0; }
@@ -241,3 +273,90 @@ textarea { font-family: var(--mono, ui-monospace, monospace); font-size: 13px; r
 
 /* keyboard shortcuts */
 kbd { font-family: var(--mono); font-size: 12.5px; background: var(--panel-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 2px 8px; color: var(--text); }
+
+
+/* ---------- phones: top bar + drawer ---------- */
+.mobilebar, .drawer-backdrop, .more-section { display: none; }
+
+@media (max-width: 760px) {
+  .mobilebar {
+    display: flex; align-items: center; gap: 6px;
+    position: fixed; top: 0; left: 0; right: 0; z-index: 40;
+    height: calc(var(--bar-h) + var(--inset-top)); padding: var(--inset-top) 8px 0 4px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  .mobilebar .icon-btn { color: var(--text); padding: 10px; }
+  .mobile-title { flex: 1; min-width: 0; font-weight: 650; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 99px; padding: 4px 11px; font-size: 13px; cursor: pointer;
+  }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .chip.on .dot { background: var(--ok); }
+
+  .shell { display: block; height: 100%; }
+  .main {
+    height: 100%;
+    padding: calc(var(--bar-h) + var(--inset-top) + 18px) 16px calc(40px + var(--inset-bottom));
+  }
+  .page { gap: 18px; }
+  h1 { font-size: 22px; }
+  .wide-only { display: none; }
+  .fiat { text-align: left; }
+  .phone-only { display: inline; }
+  .card { padding: 16px; }
+
+  .sidebar {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 50;
+    width: min(86vw, 340px);
+    padding: calc(var(--inset-top) + 16px) 16px calc(var(--inset-bottom) + 16px);
+    border-right: 1px solid var(--line); border-bottom: none;
+    transform: translateX(-105%); transition: transform 0.2s ease;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+  }
+  .drawer-open .sidebar { transform: none; }
+  .drawer-backdrop { position: fixed; inset: 0; z-index: 45; background: rgba(3, 8, 14, 0.6); }
+  .drawer-open .drawer-backdrop { display: block; }
+  .side-section.grow { flex: none; }
+  .more-section { display: flex; border-top: 1px solid var(--line); padding-top: 12px; }
+  .side-item { text-align: left; padding: 7px 0; font-size: 15px; }
+  .side-foot button { padding: 6px 0; font-size: 15px; }
+  .toast { bottom: calc(18px + var(--inset-bottom)); }
+
+  /* tabs scroll sideways instead of running off the screen */
+  .tabs { overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: none; white-space: nowrap; }
+
+  /* lists: long ids wrap, buttons and badges drop below */
+  .item { flex-wrap: wrap; gap: 8px; }
+  .item .mono, .mono.small { word-break: break-all; }
+
+  /* payment history: each payment as two lines instead of a four-column table */
+  table.history thead { display: none; }
+  table.history tr {
+    display: grid; grid-template-columns: 1fr auto; gap: 4px 12px;
+    padding: 11px 0; border-bottom: 1px solid var(--line);
+  }
+  table.history tr:last-child { border-bottom: none; }
+  table.history td { border: none; padding: 0; }
+  table.history td:nth-child(1) { grid-column: 1; grid-row: 1; }
+  table.history td:nth-child(2) { grid-column: 1; grid-row: 2; }
+  table.history td:nth-child(3) { grid-column: 2; grid-row: 1; text-align: right; }
+  table.history td:nth-child(4) { grid-column: 2; grid-row: 2; text-align: right; }
+
+  /* coins: checkbox, then the coin and its label, then amount over status */
+  table.coins thead { display: none; }
+  table.coins tr {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px;
+    padding: 11px 0; border-bottom: 1px solid var(--line);
+  }
+  table.coins.no-pick tr { grid-template-columns: 1fr auto; }
+  table.coins tr:last-child { border-bottom: none; }
+  table.coins td { border: none; padding: 0; background: none !important; }
+  table.coins td.pick { grid-row: 1 / span 2; align-self: center; }
+  table.coins td.coin { grid-row: 1 / span 2; }
+  table.coins td.amt { grid-row: 1; text-align: right; }
+  table.coins td.status { grid-row: 2; text-align: right; }
+  table.coins tr.picked { background: color-mix(in srgb, var(--ice) 8%, transparent); }
+}

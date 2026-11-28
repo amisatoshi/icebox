@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Icebox talks to Frostsnap devices as a USB host (the phone powers and drives the device). -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="true" />
+
+    <application>
+        <!-- Merged into the app's own activity (same name): plugging in a Frostsnap device offers
+             Icebox in Android's "Choose an app" list. singleTask keeps it to one Icebox window. -->
+        <activity
+            android:name="uk.co.blockchainology.icebox.MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/icebox_usb_devices" />
+        </activity>
+    </application>
+</manifest>

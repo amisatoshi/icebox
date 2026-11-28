@@ -1,6 +1,6 @@
 # 12. Troubleshooting
 
-[← Updating](11-updating.md) · [Contents](README.md) · Next: [FAQ →](faq.md)
+[← Updating](11-updating.md) · [Contents](README.md) · Next: [Labels, coins and exports →](13-labels-coins-and-exports.md)
 
 ## Sending logs
 
@@ -133,4 +133,4 @@ with the message.
 Linux), the details from **Help → About Icebox**, and what you were doing. **Never include backup
 words, and don't paste your descriptor or addresses** if the wallet holds real coins.
 
-[← Updating](11-updating.md) · [Contents](README.md) · Next: [FAQ →](faq.md)
+[← Updating](11-updating.md) · [Contents](README.md) · Next: [Labels, coins and exports →](13-labels-coins-and-exports.md)

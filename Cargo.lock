@@ -2042,7 +2042,7 @@ dependencies = [
 
 [[package]]
 name = "icebox"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "icebox-core",
@@ -2050,6 +2050,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
+ "tauri-plugin-icebox-usb",
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
  "tauri-plugin-window-state",
@@ -2059,7 +2060,7 @@ dependencies = [
 
 [[package]]
 name = "icebox-core"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4577,6 +4578,15 @@ dependencies = [
  "serde_json",
  "tauri-utils",
  "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-icebox-usb"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

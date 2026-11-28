@@ -38,6 +38,8 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
   // Restore scan: which devices hold which (pretend) wallet shares.
   let scanning = false;
   let hideBalance = false;
+  const btcpayAhead = {};
+  let priceSettings = { enabled: false, currency: "GBP", manual_code: null, manual_price: null };
   const oldWallet = { name: "Old savings", network: "signet", threshold: 2, groupId: "demo-old:" + hex(64) };
   const heldBy = {};    // device id -> [{ groupId, name, network, threshold, share }]
   let savedRestores = []; // [{ restoration_id, groupId, name, network, threshold, devices: [{ id, share_number }] }]
@@ -59,6 +61,10 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
 
   const emitDevices = () => devs.forEach((d) => (d.needs_name = !d.name)) || send({ kind: "devices", devices: devs });
   const emitKeys = () => send({ kind: "keys", keys });
+  // Labels, per wallet: "kind ref" -> { kind, reference, label }. Gone on exit, like everything here.
+  const labelsByKey = {};
+  const labelsOf = (keyId) => (labelsByKey[keyId] = labelsByKey[keyId] || {});
+  const labelFor = (keyId, kind, ref) => { const l = labelsOf(keyId)[kind + " " + ref]; return l ? l.label : null; };
   const findKey = (keyId) => keys.find((k) => k.key_id === keyId);
 
   function address(network, index) {
@@ -93,7 +99,7 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
       if (tx.confirmations === 0 && tx.net_value > 0) pendingIncoming += tx.net_value;
       else balance += tx.net_value;
     }
-    return { key_id: keyId, network: k.network, height: w.height, balance, pending_incoming: pendingIncoming, txs: w.txs.slice().reverse() };
+    return { key_id: keyId, network: k.network, height: w.height, balance, pending_incoming: pendingIncoming, txs: w.txs.slice().reverse().map((t) => ({ ...t, label: labelFor(keyId, "tx", t.txid) })) };
   }
 
   function signingEvent(s) {
@@ -106,7 +112,7 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
 
   const handlers = {
     startup_status: () => "ok",
-    app_info: () => ({ version: "0.4.1", frostsnap_rev: "233f93b6d4ad16552596fad4f80e7a44b9fe4c60", expected_firmware: "v0.4.0", data_dir: "(demo mode: nothing is saved)" }),
+    app_info: () => ({ version: "0.5.0", frostsnap_rev: "233f93b6d4ad16552596fad4f80e7a44b9fe4c60", expected_firmware: "v0.4.0", data_dir: "(demo mode: nothing is saved)" }),
     data_dir: () => "(demo mode: nothing is saved)",
     list_devices: () => devs,
     list_keys: () => keys,
@@ -242,6 +248,9 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
       wallets[keyId] = { height: 268431, nextIndex: 0, txs: [
         { txid: hex(64), net_value: 1500000, fee: 141, confirmations: 40, timestamp: now() - 86400 * 3 },
         { txid: hex(64), net_value: -300000, fee: 154, confirmations: 12, timestamp: now() - 86400 },
+        { txid: hex(64), net_value: 42000, fee: 141, confirmations: 9, timestamp: now() - 70000 },
+        { txid: hex(64), net_value: 18500, fee: 141, confirmations: 6, timestamp: now() - 50000 },
+        { txid: hex(64), net_value: 27300, fee: 141, confirmations: 3, timestamp: now() - 20000 },
       ] };
       emitKeys();
       later(4000, () => {
@@ -256,9 +265,9 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
     mark_address_shared: ({ keyId, index }) => { const w = wallets[keyId]; w.shared = Math.max(w.shared || 0, index + 1); return null; },
     addresses: ({ keyId }) => {
       const k = findKey(keyId); const w = wallets[keyId]; const n = Math.max(w.nextIndex, w.shared || 0);
-      return Array.from({ length: n + 1 }, (_, i) => ({ index: i, address: address(k.network, i + 1), used: i < 2 && w.txs.length > 0, shared: i < (w.shared || 0) })).reverse();
+      return Array.from({ length: n + 1 }, (_, i) => { const a = address(k.network, i + 1); return { index: i, address: a, used: i < 2 && w.txs.length > 0, shared: i < (w.shared || 0), label: labelFor(keyId, "addr", a) }; }).reverse();
     },
-    address: ({ keyId, index }) => { const k = findKey(keyId); const a = address(k.network, index + 1); return { index, address: a, used: index < 2 && wallets[keyId].txs.length > 0, qr_svg: qr(a) }; },
+    address: ({ keyId, index }) => { const k = findKey(keyId); const a = address(k.network, index + 1); return { index, address: a, used: index < 2 && wallets[keyId].txs.length > 0, qr_svg: qr(a), label: labelFor(keyId, "addr", a) }; },
     descriptor_qr: () => qr("demo descriptor"),
     watch_only_wallets: () => [],
     watch_only_code: ({ keyId }) => ({ code: `icebox-watch1:signet:${hex(130)}:${hex(8)}:${(findKey(keyId) || {}).name || "Demo"}  (demo)`, qr_svg: qr("demo watch-only code") }),
@@ -271,8 +280,8 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
 
     wallet: ({ keyId }) => walletView(keyId),
     next_address: ({ keyId }) => {
-      const w = wallets[keyId]; const index = w.nextIndex++; const a = address(findKey(keyId).network, index + 1);
-      return { index, address: a, used: false, qr_svg: qr(a) };
+      const w = wallets[keyId]; const index = Math.max(w.nextIndex, w.shared || 0); w.nextIndex = index + 1; const a = address(findKey(keyId).network, index + 1);
+      return { index, address: a, used: false, qr_svg: qr(a), label: labelFor(keyId, "addr", a) };
     },
     verify_address: ({ keyId }) => {
       const k = findKey(keyId);
@@ -286,12 +295,12 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
       const send_ = amount === null ? v.balance - fee : amount;
       if (send_ <= 0 || send_ + fee > v.balance) throw "can't build that payment: insufficient balance";
       pendingSend = { keyId, to: to.trim().replace(/^bitcoin:/i, "").split("?")[0], amount: send_, fee, feerate };
-      return { recipient: pendingSend.to, amount: send_, fee, change: amount === null ? null : v.balance - send_ - fee, input_count: 2, feerate };
+      return { to_self: false, recipient: pendingSend.to, amount: send_, fee, change: amount === null ? null : v.balance - send_ - fee, input_count: 2, feerate };
     },
     start_send: ({ keyId, signerIds }) => {
       if (!pendingSend) throw "prepare the payment first";
       const s = { session_id: hex(64), key_id: keyId, txid: hex(64), fee: pendingSend.fee, feerate: pendingSend.feerate,
-        recipients: [{ address: pendingSend.to, amount: pendingSend.amount }], signers: signerIds, got_shares: [], asked: [], signed: false };
+        recipients: pendingSend.toSelf ? [] : [{ address: pendingSend.to, amount: pendingSend.amount }], signers: signerIds, got_shares: [], asked: [], signed: false };
       sessions.push(s); pendingSend = null; signingEvent(s); return s.session_id;
     },
     request_device_sign: ({ sessionId, deviceId }) => {
@@ -304,12 +313,69 @@ window.createIceboxDemo = function createIceboxDemo(emit, options) {
     cancel_sign_session: ({ sessionId }) => { sessions = sessions.filter((s) => s.session_id !== sessionId); },
     broadcast: ({ sessionId }) => {
       const s = sessions.find((s) => s.session_id === sessionId);
-      wallets[s.key_id].txs.push({ txid: s.txid, net_value: -(s.recipients[0].amount + s.fee), fee: s.fee, confirmations: 0, timestamp: now() });
+      const paid = s.recipients.reduce((n, r) => n + r.amount, 0);
+      wallets[s.key_id].txs.push({ txid: s.txid, net_value: -(paid + s.fee), fee: s.fee, confirmations: 0, timestamp: now(), toSelf: s.recipients.length === 0 });
       sessions = sessions.filter((x) => x !== s);
       later(5000, () => { const tx = wallets[s.key_id].txs.find((t) => t.txid === s.txid); if (tx) { tx.confirmations = 1; tx.timestamp = now(); send({ kind: "wallet_changed", key_id: s.key_id }); } });
       return s.txid;
     },
     cancel_protocol: () => { scanning = false; },
+    // Coins, worked out roughly from the pretend history: each payment in is a coin; a payment out
+    // spends everything and leaves one change coin (a combine leaves one coin too).
+    coins: ({ keyId }) => {
+      const k = findKey(keyId); let coins = [];
+      for (const t of wallets[keyId].txs) {
+        if (t.net_value > 0) coins.push({ outpoint: t.txid + ":0", value: t.net_value, address: address(k.network, coins.length + 1), confirmations: t.confirmations, timestamp: t.timestamp });
+        else {
+          const left = coins.reduce((n, c) => n + c.value, 0) + t.net_value;
+          coins = left > 0 ? [{ outpoint: t.txid + ":1", value: left, address: address(k.network, 900 + coins.length), confirmations: t.confirmations, timestamp: t.timestamp }] : [];
+        }
+      }
+      return coins.reverse().map((c) => ({ ...c, label: labelFor(keyId, "output", c.outpoint), tx_label: labelFor(keyId, "tx", c.outpoint.split(":")[0]), address_label: labelFor(keyId, "addr", c.address), spendable: true }));
+    },
+    prepare_consolidate: ({ keyId, outpoints, feerate }) => {
+      const coins = handlers.coins({ keyId }).filter((c) => outpoints.includes(c.outpoint));
+      if (coins.length < 2) throw "choose at least two coins to combine";
+      const fee = Math.round((58 * coins.length + 54) * feerate); const sum = coins.reduce((n, c) => n + c.value, 0);
+      if (sum - fee < 330) throw "can't combine those coins: not enough to pay the fee and leave a usable output";
+      pendingSend = { keyId, toSelf: true, to: "", amount: 0, fee, feerate };
+      return { to_self: true, recipient: "", amount: sum - fee, fee, change: null, input_count: coins.length, feerate };
+    },
+    btcpay_watch: ({ keyId }) => btcpayAhead[keyId] || 0,
+    set_btcpay_watch: ({ keyId, ahead }) => { btcpayAhead[keyId] = ahead; const w = wallets[keyId]; if (ahead) w.shared = Math.max(w.shared || 0, ahead); return null; },
+    price_settings: () => ({ ...priceSettings }),
+    set_price_settings: ({ settings }) => (priceSettings = { ...settings }),
+    labels: ({ keyId }) => Object.values(labelsOf(keyId)),
+    set_label: ({ keyId, kind, reference, label }) => {
+      const text = String(label || "").replace(/\s+/g, " ").trim().slice(0, 255);
+      if (text) labelsOf(keyId)[kind + " " + reference] = { kind, reference, label: text, spendable: null };
+      else delete labelsOf(keyId)[kind + " " + reference];
+      return null;
+    },
+    export_labels: ({ keyId }) => Object.values(labelsOf(keyId)).map((l) => JSON.stringify({ type: l.kind, ref: l.reference, label: l.label })).join("\n") + (Object.keys(labelsOf(keyId)).length ? "\n" : ""),
+    import_labels: ({ keyId, text }) => {
+      let imported = 0, skipped = 0, unchanged = 0;
+      for (const line of String(text).split(/\r?\n/)) {
+        if (!line.trim()) continue;
+        try {
+          const r = JSON.parse(line);
+          if (!["tx", "addr", "pubkey", "input", "output", "xpub"].includes(r.type) || typeof r.ref !== "string" || typeof r.label !== "string" || !r.label.trim()) { skipped++; continue; }
+          if (labelFor(keyId, r.type, r.ref) === r.label.trim()) { unchanged++; continue; }
+          handlers.set_label({ keyId, kind: r.type, reference: r.ref, label: r.label }); imported++;
+        } catch (_) { skipped++; }
+      }
+      if (!imported && !unchanged) throw "no labels found; a label file (BIP-329) has one JSON record per line";
+      return { imported, unchanged, skipped };
+    },
+    history_csv: ({ keyId }) => {
+      const btc = (s) => (s < 0 ? "-" : "") + (Math.abs(s) / 1e8).toFixed(8);
+      const q = (t) => (/[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t);
+      return "Date (UTC),Transaction ID,Amount (BTC),Fee (BTC),Status,Label\r\n" + walletView(keyId).txs.map((t) =>
+        [t.timestamp ? new Date(t.timestamp * 1000).toISOString().replace(/\.\d+Z$/, "Z") : "", t.txid, btc(t.net_value), t.net_value < 0 ? btc(t.fee) : "",
+          t.confirmations ? `${t.confirmations} confirmation${t.confirmations === 1 ? "" : "s"}` : "Pending", q(t.label || "")].join(",")).join("\r\n") + "\r\n";
+    },
+    save_export: () => { throw "Demo mode doesn't save files."; },
+    show_file: () => { throw "Demo mode doesn't save files."; },
 
     electrum_servers: ({ network }) => ({ network, primary: "(demo: no server used)", backup: "(demo: no server used)", default_primary: "(demo: no server used)", default_backup: "(demo: no server used)" }),
     restore_default_electrum: () => null,

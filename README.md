@@ -4,7 +4,7 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/amisatoshi/icebox/badge)](https://scorecard.dev/viewer/?uri=github.com/amisatoshi/icebox)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
-A self-built desktop wallet for [Frostsnap](https://frostsnap.com) devices, for Windows, macOS and Linux.
+A self-built wallet for [Frostsnap](https://frostsnap.com) devices, for Windows, macOS and Linux, with an Android beta.
 
 Icebox is a **third-party coordinator**: it does the job the official Frostsnap app does (talking
 to the devices over USB, running the FROST key generation and signing protocol, keeping track of
@@ -99,6 +99,19 @@ sending, restoring, backups, BTCPay Server and troubleshooting, with screenshots
 - One wallet per device, as in the official app: new wallets use blank devices
 - Remove a wallet from Icebox (the devices keep their shares; restore it any time)
 
+**New in 0.5.0:**
+
+- **Android (beta)**: the same app on Android phones, with Frostsnap devices on the USB-C port.
+  See [Android](#android-beta) below
+- **Labels** on payments, addresses and coins, a **Note** when sending, and **BIP-329**
+  import/export to move them to and from Sparrow, BTCPay Server and other wallets
+- **Export history as CSV**, with each payment's value on the day when prices are on
+- **Coins tab**: see every coin and **combine chosen coins** into one
+- **Prices**, off until you switch them on: GBP, USD, EUR, AUD and more from mempool.space, MYR
+  via the ECB's rate, the Gulf currencies via their dollar pegs, or your own price
+- **Used with BTCPay Server**: watch further ahead, so payments after many unpaid invoices aren't
+  missed
+
 **New in 0.4.1:**
 
 - **Hide amounts** with one click (the eye by the balance, View → Hide or show balances, or
@@ -132,6 +145,21 @@ sending, restoring, backups, BTCPay Server and troubleshooting, with screenshots
 - macOS builds carry an ad-hoc signature, so macOS shows its normal "unidentified developer"
   prompt instead of calling the app damaged
 
+## Android (beta)
+
+Icebox for Android is released alongside the desktop app, as `Icebox_X.Y.Z_android-beta.apk` on
+each [GitHub release](https://github.com/amisatoshi/icebox/releases). Install it on the phone
+(Android 7 or newer, 64-bit), plug a Frostsnap device into the USB-C port and tap OK when Android
+asks. See the [Android guide](docs/guide/14-android.md).
+
+The APK is built from the tagged source by the release workflow, then signed offline. Android
+only accepts updates signed with the same certificate, so check it when you first install:
+`apksigner verify --print-certs` should show this SHA-256 fingerprint:
+
+```
+(published with the first Android release)
+```
+
 **Not yet:** firmware upgrades, restoring from written-down backup words, PSBT import/export, Nostr keys,
 accepting self-signed TLS certificates (use `tcp://` for a node on your own network, or a server with
 a proper certificate). For any of those, use the official app.
@@ -156,6 +184,12 @@ sudo udevadm control --reload && sudo udevadm trigger
 ```
 
 Other distributions: see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+
+### Android
+
+See [docs/dev/android.md](docs/dev/android.md) (Android Studio, the NDK, then
+`cargo tauri android init` and `cargo tauri android dev`), and
+[docs/dev/android-release.md](docs/dev/android-release.md) for how releases are signed.
 
 ### Windows 10/11
 

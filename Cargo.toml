@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/icebox-core", "src-tauri"]
+members = ["crates/icebox-core", "crates/tauri-plugin-icebox-usb", "src-tauri"]
 default-members = ["crates/icebox-core"]
 resolver = "2"
 

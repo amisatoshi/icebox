@@ -13,6 +13,9 @@
 
 use crate::device_list::DeviceList;
 use crate::events::*;
+use crate::export::{history_csv, CsvRow};
+use crate::labels::{self, Label, LabelKind};
+use crate::prices::PriceSettings;
 use crate::restore::{self, ScanHeldShares, ScanResults};
 use crate::watch_only::WatchCode;
 use anyhow::{anyhow, Context as _, Result};
@@ -39,7 +42,7 @@ use frostsnap_coordinator::settings::Settings as CoordSettings;
 use frostsnap_coordinator::signing::{SigningDispatcher, SigningState};
 use frostsnap_coordinator::verify_address::{VerifyAddressProtocol, VerifyAddressProtocolState};
 use frostsnap_coordinator::{
-    AppMessageBody, DesktopSerial, DeviceChange, Sink, UiProtocol, UiStack, UsbSender,
+    AppMessageBody, DesktopSerial, DeviceChange, Serial, Sink, UiProtocol, UiStack, UsbSender,
     UsbSerialManager,
 };
 use frostsnap_core::bitcoin_transaction::TransactionTemplate;
@@ -53,7 +56,7 @@ use frostsnap_core::{
     AccessStructureRef, DeviceId, KeyId, KeygenId, MasterAppkey, RestorationId, SignSessionId,
     SymmetricKey, WireSignTask,
 };
-use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -137,6 +140,88 @@ fn load_watch_only(db: &rusqlite::Connection) -> Result<HashMap<KeyId, WatchCode
     Ok(wallets)
 }
 
+/// How far ahead "Used with BTCPay Server" can watch. The wallet engine already derives 1000
+/// addresses ahead locally, so up to that costs nothing extra to look up.
+pub const BTCPAY_WATCH_CHOICES: [u32; 4] = [100, 250, 500, 1000];
+
+fn btcpay_setting_name(key_id: KeyId) -> String {
+    format!("btcpay_ahead:{key_id}")
+}
+
+/// Labels live in Icebox's own table (the official app ignores it), one row per wallet and
+/// BIP-329 record. `spendable` is NULL unless an imported `output` record set it.
+fn init_labels(db: &rusqlite::Connection) -> Result<()> {
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS icebox_labels (
+            key_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            ref TEXT NOT NULL,
+            label TEXT NOT NULL,
+            spendable INTEGER,
+            PRIMARY KEY (key_id, kind, ref)
+        )",
+    )?;
+    Ok(())
+}
+
+/// Labels for one wallet, keyed by (type, reference), from an open database.
+fn load_labels(
+    db: &rusqlite::Connection,
+    key_id: KeyId,
+) -> Result<BTreeMap<(LabelKind, String), Label>> {
+    let mut stmt =
+        db.prepare("SELECT kind, ref, label, spendable FROM icebox_labels WHERE key_id = ?1")?;
+    let rows = stmt.query_map(rusqlite::params![key_id.to_string()], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<bool>>(3)?,
+        ))
+    })?;
+    let mut out = BTreeMap::new();
+    for row in rows {
+        let (kind, reference, label, spendable) = row?;
+        let Some(kind) = LabelKind::parse(&kind) else {
+            continue;
+        };
+        out.insert(
+            (kind, reference.clone()),
+            Label {
+                kind,
+                reference,
+                label,
+                spendable,
+            },
+        );
+    }
+    Ok(out)
+}
+
+fn save_label(db: &rusqlite::Connection, key_id: KeyId, label: &Label) -> Result<()> {
+    if label.label.is_empty() && label.spendable.is_none() {
+        db.execute(
+            "DELETE FROM icebox_labels WHERE key_id = ?1 AND kind = ?2 AND ref = ?3",
+            rusqlite::params![key_id.to_string(), label.kind.as_str(), label.reference],
+        )?;
+    } else {
+        db.execute(
+            "INSERT INTO icebox_labels (key_id, kind, ref, label, spendable)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT (key_id, kind, ref) DO UPDATE
+             SET label = excluded.label, spendable = excluded.spendable",
+            rusqlite::params![
+                key_id.to_string(),
+                label.kind.as_str(),
+                label.reference,
+                label.label,
+                label.spendable
+            ],
+        )?;
+    }
+    Ok(())
+}
+
 // ---------- id helpers: every id crosses to the UI as a hex string ----------
 
 fn parse<T: FromStr>(what: &str, s: &str) -> Result<T> {
@@ -171,6 +256,12 @@ impl Service {
     /// Opens (or creates) the databases in `app_dir`, connects to USB, and starts the background
     /// threads. `events` is called from background threads for every UI event.
     pub fn start(app_dir: &Path, events: EventFn) -> Result<Self> {
+        Self::start_with(app_dir, events, Box::new(DesktopSerial))
+    }
+
+    /// Like [`Service::start`], with a chosen way of reaching the devices: [`DesktopSerial`]
+    /// on desktop, or Android's USB host API on Android.
+    pub fn start_with(app_dir: &Path, events: EventFn, serial: Box<dyn Serial>) -> Result<Self> {
         std::fs::create_dir_all(app_dir)
             .with_context(|| format!("creating data directory {}", app_dir.display()))?;
         let db_file = app_dir.join("frostsnap.sqlite");
@@ -180,6 +271,10 @@ impl Service {
         let db = Arc::new(Mutex::new(db));
 
         let watch_only = load_watch_only(&db.lock().unwrap())?;
+        init_labels(&db.lock().unwrap())?;
+        db.lock().unwrap().execute_batch(
+            "CREATE TABLE IF NOT EXISTS icebox_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        )?;
 
         let (coordinator, device_names, backup_state, settings) = {
             let mut db_ = db.lock().unwrap();
@@ -191,7 +286,7 @@ impl Service {
             )
         };
 
-        let usb_manager = UsbSerialManager::new(Box::new(DesktopSerial));
+        let usb_manager = UsbSerialManager::new(serial);
         let usb_sender = usb_manager.usb_sender();
 
         // One chain client and one wallet per network, exactly as the official app does. The
@@ -946,6 +1041,9 @@ impl Service {
                 *pending = None;
             }
         }
+        if !self.0.watch_only.lock().unwrap().contains_key(&key_id) {
+            self.forget_labels(key_id)?;
+        }
         tracing::info!(%key_id, "removed wallet from Icebox");
         self.emit_keys();
         Ok(())
@@ -1080,6 +1178,9 @@ impl Service {
             "DELETE FROM icebox_watch_only WHERE key_id = ?1",
             rusqlite::params![key_id.to_string()],
         )?;
+        if self.frost_key(key_id).is_err() {
+            self.forget_labels(key_id)?;
+        }
         event!(Level::INFO, key = %key_id, "watch-only wallet removed");
         self.emit_watch_only();
         Ok(())
@@ -1630,7 +1731,10 @@ impl Service {
         let mut wallet = wallet.lock().unwrap();
         let height = wallet.chain_tip().height();
         let txs = wallet.list_transactions(master_appkey);
+        let highest_used = txs.iter().flat_map(|tx| tx.is_mine.values().copied()).max();
         drop(wallet);
+        self.keep_btcpay_window(key_id, master_appkey, network, highest_used);
+        let labels = self.label_map(key_id, LabelKind::Tx)?;
 
         let mut balance = 0i64;
         let mut pending_incoming = 0i64;
@@ -1689,6 +1793,7 @@ impl Service {
                     .as_ref()
                     .map(|t| t.time)
                     .or(tx.last_seen),
+                label: labels.get(&tx.txid.to_string()).cloned(),
             });
         }
         if balance < 0 {
@@ -1706,11 +1811,74 @@ impl Service {
         })
     }
 
+    /// The coins the wallet holds, newest first, each with its labels. Worked out from the
+    /// wallet's history: an output of ours that no later payment of ours spends.
+    pub fn coins(&self, key_id: &str) -> Result<Vec<CoinView>> {
+        let (key_id, master_appkey, network, wallet) = self.wallet_target(key_id)?;
+        let txs = wallet.lock().unwrap().list_transactions(master_appkey);
+        let spent: HashSet<bitcoin::OutPoint> = txs
+            .iter()
+            .flat_map(|tx| tx.inner.input.iter().map(|i| i.previous_output))
+            .collect();
+        let all = {
+            let db = self.0.db.lock().unwrap();
+            load_labels(&db, key_id)?
+        };
+        let text = |kind: LabelKind, reference: &str| {
+            all.get(&(kind, reference.to_string()))
+                .map(|l| l.label.clone())
+                .filter(|l| !l.is_empty())
+        };
+        let mut coins = Vec::new();
+        for tx in &txs {
+            for (vout, out) in tx.inner.output.iter().enumerate() {
+                if !tx.is_mine.contains_key(&out.script_pubkey) {
+                    continue;
+                }
+                let outpoint = bitcoin::OutPoint::new(tx.txid, vout as u32);
+                if spent.contains(&outpoint) {
+                    continue;
+                }
+                let reference = outpoint.to_string();
+                let address = Address::from_script(&out.script_pubkey, network)
+                    .ok()
+                    .map(|a| a.to_string());
+                let spendable = all
+                    .get(&(LabelKind::Output, reference.clone()))
+                    .and_then(|l| l.spendable)
+                    .unwrap_or(true);
+                coins.push(CoinView {
+                    label: text(LabelKind::Output, &reference),
+                    tx_label: text(LabelKind::Tx, &tx.txid.to_string()),
+                    address_label: address.as_deref().and_then(|a| text(LabelKind::Addr, a)),
+                    outpoint: reference,
+                    value: out.value.to_sat(),
+                    address,
+                    confirmations: tx.confirmations,
+                    timestamp: tx
+                        .confirmation_time
+                        .as_ref()
+                        .map(|t| t.time)
+                        .or(tx.last_seen),
+                    spendable,
+                });
+            }
+        }
+        Ok(coins)
+    }
+
     /// Reveals the next unused receive address.
     pub fn next_address(&self, key_id: &str) -> Result<AddressView> {
-        let (_, master_appkey, _, wallet) = self.wallet_target(key_id)?;
+        let (key_id, master_appkey, _, wallet) = self.wallet_target(key_id)?;
         let info = wallet.lock().unwrap().next_address(master_appkey);
-        address_view(info.index, &info.address, info.used)
+        self.with_label(key_id, address_view(info.index, &info.address, info.used)?)
+    }
+
+    fn with_label(&self, key_id: KeyId, mut view: AddressView) -> Result<AddressView> {
+        view.label = self
+            .label_map(key_id, LabelKind::Addr)?
+            .remove(&view.address);
+        Ok(view)
     }
 
     /// Records that receive address `index` was handed out (copied, shown, or checked on a
@@ -1727,28 +1895,33 @@ impl Service {
     /// Every receive address handed out so far plus the next one, newest first, with whether
     /// each has received coins (to discourage reuse).
     pub fn addresses(&self, key_id: &str) -> Result<Vec<AddressListItem>> {
-        let (_, master_appkey, _, wallet) = self.wallet_target(key_id)?;
+        let (key_id, master_appkey, _, wallet) = self.wallet_target(key_id)?;
         let list = wallet.lock().unwrap().list_addresses(master_appkey);
+        let labels = self.label_map(key_id, LabelKind::Addr)?;
         Ok(list
             .into_iter()
-            .map(|a| AddressListItem {
-                index: a.index,
-                address: a.address.to_string(),
-                used: a.used,
-                shared: a.revealed,
+            .map(|a| {
+                let address = a.address.to_string();
+                AddressListItem {
+                    index: a.index,
+                    label: labels.get(&address).cloned(),
+                    address,
+                    used: a.used,
+                    shared: a.revealed,
+                }
             })
             .collect())
     }
 
     /// One receive address, with its QR code, to show again.
     pub fn address(&self, key_id: &str, index: u32) -> Result<AddressView> {
-        let (_, master_appkey, _, wallet) = self.wallet_target(key_id)?;
+        let (key_id, master_appkey, _, wallet) = self.wallet_target(key_id)?;
         let info = wallet
             .lock()
             .unwrap()
             .address(master_appkey, index)
             .ok_or_else(|| anyhow!("address index {index} is out of range"))?;
-        address_view(info.index, &info.address, info.used)
+        self.with_label(key_id, address_view(info.index, &info.address, info.used)?)
     }
 
     /// Shows receive address `index` on the devices so the user can check it there. Never hand
@@ -1829,10 +2002,54 @@ impl Service {
         check_not_dust(&address, plan.recipient_value(0).unwrap_or(0))?;
 
         let preview = SendPreview {
+            to_self: false,
             recipient: address.to_string(),
             amount: plan.recipient_value(0).unwrap_or(0),
             fee: plan.fee(),
             change: plan.change_value(),
+            input_count: plan.input_count(),
+            feerate,
+        };
+        *self.0.pending_send.lock().unwrap() = Some(PendingSend { key_id, plan });
+        Ok(preview)
+    }
+
+    /// Plans moving exactly the chosen coins (`txid:vout`) back into this wallet as one coin, to
+    /// tidy up many small coins while fees are low or to merge coins on purpose. Like
+    /// [`Self::prepare_send`], nothing is reserved until [`Self::start_send`].
+    ///
+    /// Merging coins links them together for anyone watching the blockchain, so the front end
+    /// says so before this is called.
+    pub fn prepare_consolidate(
+        &self,
+        key_id: &str,
+        outpoints: Vec<String>,
+        feerate: f32,
+    ) -> Result<SendPreview> {
+        let key_id = parse_key(key_id)?;
+        let key = self.frost_key(key_id)?;
+        let (_, wallet) = self.wallet_for(&key)?;
+        if !(feerate.is_finite() && feerate >= 1.0) {
+            return Err(anyhow!("fee rate must be at least 1 sat/vB"));
+        }
+        if outpoints.len() < 2 {
+            return Err(anyhow!("choose at least two coins to combine"));
+        }
+        let outpoints = outpoints
+            .iter()
+            .map(|o| parse::<bitcoin::OutPoint>("coin", o))
+            .collect::<Result<Vec<_>>>()?;
+        let plan = wallet
+            .lock()
+            .unwrap()
+            .plan_consolidate(key.complete_key.master_appkey, outpoints, feerate)
+            .map_err(|e| anyhow!("can't combine those coins: {e}"))?;
+        let preview = SendPreview {
+            to_self: true,
+            recipient: String::new(),
+            amount: plan.change_value().unwrap_or(0),
+            fee: plan.fee(),
+            change: None,
             input_count: plan.input_count(),
             feerate,
         };
@@ -2136,6 +2353,263 @@ impl Service {
     }
 
     // =====================================================================================
+    // Labels (BIP-329) and exports
+    // =====================================================================================
+
+    /// One type of label for a wallet, reference -> label (empty labels left out).
+    fn label_map(&self, key_id: KeyId, kind: LabelKind) -> Result<HashMap<String, String>> {
+        let db = self.0.db.lock().unwrap();
+        Ok(load_labels(&db, key_id)?
+            .into_values()
+            .filter(|l| l.kind == kind && !l.label.is_empty())
+            .map(|l| (l.reference, l.label))
+            .collect())
+    }
+
+    /// Removes what Icebox keeps about a wallet besides the wallet itself: labels and the
+    /// BTCPay setting. Called when the wallet is removed from Icebox.
+    fn forget_labels(&self, key_id: KeyId) -> Result<()> {
+        let db = self.0.db.lock().unwrap();
+        db.execute(
+            "DELETE FROM icebox_labels WHERE key_id = ?1",
+            rusqlite::params![key_id.to_string()],
+        )?;
+        db.execute(
+            "DELETE FROM icebox_settings WHERE name = ?1",
+            rusqlite::params![btcpay_setting_name(key_id)],
+        )?;
+        Ok(())
+    }
+
+    // =====================================================================================
+    // Used with BTCPay Server: watch further ahead
+    // =====================================================================================
+
+    /// How many addresses past the last one that received coins Icebox keeps watching for this
+    /// wallet because BTCPay Server hands addresses out too; 0 when off.
+    pub fn btcpay_watch(&self, key_id: &str) -> Result<u32> {
+        let (key_id, ..) = self.wallet_target(key_id)?;
+        let db = self.0.db.lock().unwrap();
+        Ok(db
+            .query_row(
+                "SELECT value FROM icebox_settings WHERE name = ?1",
+                rusqlite::params![btcpay_setting_name(key_id)],
+                |row| row.get::<_, String>(0),
+            )
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0))
+    }
+
+    /// Switches BTCPay watching on (with how far ahead to watch) or off (0).
+    ///
+    /// Why it's needed: BTCPay gives every invoice its own address, and unpaid invoices leave runs
+    /// of addresses nobody pays. Icebox only asks its Electrum server about addresses up to 50
+    /// past the last one it has handed out, so after a long run of unpaid invoices a payment to a
+    /// later BTCPay address wouldn't show here. Watching ahead marks addresses up to `ahead` past
+    /// the last used one as handed out, so they're watched too. The cost: the server is told
+    /// about more of your addresses (use your own server for the most privacy), and this wallet's
+    /// own "Get a receive address" starts after them, which also keeps it clear of BTCPay's.
+    pub fn set_btcpay_watch(&self, key_id: &str, ahead: u32) -> Result<()> {
+        let (key_id, master_appkey, network, wallet) = self.wallet_target(key_id)?;
+        if !BTCPAY_WATCH_CHOICES.contains(&ahead) && ahead != 0 {
+            return Err(anyhow!("choose how far ahead to watch from the list"));
+        }
+        {
+            let db = self.0.db.lock().unwrap();
+            if ahead == 0 {
+                db.execute(
+                    "DELETE FROM icebox_settings WHERE name = ?1",
+                    rusqlite::params![btcpay_setting_name(key_id)],
+                )?;
+            } else {
+                db.execute(
+                    "INSERT INTO icebox_settings (name, value) VALUES (?1, ?2)
+                     ON CONFLICT (name) DO UPDATE SET value = excluded.value",
+                    rusqlite::params![btcpay_setting_name(key_id), ahead.to_string()],
+                )?;
+            }
+        }
+        event!(Level::INFO, key = %key_id, ahead, "BTCPay watch window set");
+        let highest_used = wallet
+            .lock()
+            .unwrap()
+            .list_transactions(master_appkey)
+            .iter()
+            .flat_map(|tx| tx.is_mine.values().copied())
+            .max();
+        self.keep_btcpay_window(key_id, master_appkey, network, highest_used);
+        self.emit(Event::WalletChanged {
+            key_id: key_id.to_string(),
+        });
+        Ok(())
+    }
+
+    /// With BTCPay watching on, makes sure receive addresses up to `ahead` past the highest one
+    /// in use are revealed, so the chain client subscribes to them. Revealing only ever moves
+    /// forward and is a no-op when already far enough, so this is safe to call on every refresh.
+    /// The window widens on the server at the next block, when the wallet next tells its chain
+    /// client where each keychain ends.
+    ///
+    /// `highest_used` comes from transaction outputs and inputs, which include change indices
+    /// too; over-reaching by a few addresses is harmless.
+    fn keep_btcpay_window(
+        &self,
+        key_id: KeyId,
+        master_appkey: MasterAppkey,
+        network: Network,
+        highest_used: Option<u32>,
+    ) {
+        let ahead = match self.btcpay_watch(&key_id.to_string()) {
+            Ok(0) | Err(_) => return,
+            Ok(ahead) => ahead,
+        };
+        let target = highest_used.map_or(ahead - 1, |i| i.saturating_add(ahead));
+        let Some(wallet) = self.0.wallets.get(&network).cloned() else {
+            return;
+        };
+        let revealed = wallet
+            .lock()
+            .unwrap()
+            .mark_address_shared(master_appkey, target);
+        if let Err(e) = revealed {
+            event!(Level::WARN, key = %key_id, "couldn't watch ahead for BTCPay: {e}");
+        }
+    }
+
+    /// Every label saved for a wallet, including types Icebox doesn't show (kept from imports).
+    pub fn labels(&self, key_id: &str) -> Result<Vec<LabelView>> {
+        let (key_id, ..) = self.wallet_target(key_id)?;
+        let db = self.0.db.lock().unwrap();
+        Ok(load_labels(&db, key_id)?
+            .into_values()
+            .map(|l| LabelView {
+                kind: l.kind.to_string(),
+                reference: l.reference,
+                label: l.label,
+                spendable: l.spendable,
+            })
+            .collect())
+    }
+
+    /// Sets (or, with an empty `label`, clears) the label on a payment (`tx`, by txid), an
+    /// address (`addr`) or a coin (`output`, `txid:vout`). A coin's `spendable` mark from an
+    /// imported file is kept.
+    pub fn set_label(&self, key_id: &str, kind: &str, reference: &str, label: &str) -> Result<()> {
+        let (key_id, ..) = self.wallet_target(key_id)?;
+        let kind = LabelKind::parse(kind).ok_or_else(|| anyhow!("unknown label type {kind}"))?;
+        let reference = labels::normalise_ref(kind, reference)
+            .ok_or_else(|| anyhow!("that isn't a valid {kind} reference"))?;
+        let db = self.0.db.lock().unwrap();
+        let spendable = load_labels(&db, key_id)?
+            .get(&(kind, reference.clone()))
+            .and_then(|l| l.spendable);
+        save_label(
+            &db,
+            key_id,
+            &Label {
+                kind,
+                reference,
+                label: labels::clean_label(label),
+                spendable,
+            },
+        )?;
+        drop(db);
+        self.emit(Event::WalletChanged {
+            key_id: key_id.to_string(),
+        });
+        Ok(())
+    }
+
+    /// The wallet's labels as a BIP-329 file (JSON Lines), for Sparrow, BTCPay and other wallets.
+    pub fn export_labels(&self, key_id: &str) -> Result<String> {
+        let (key_id, ..) = self.wallet_target(key_id)?;
+        let origin = self
+            .descriptor(&key_id.to_string())
+            .ok()
+            .and_then(|d| labels::origin_of(&d));
+        let all: Vec<Label> = {
+            let db = self.0.db.lock().unwrap();
+            load_labels(&db, key_id)?.into_values().collect()
+        };
+        Ok(labels::to_bip329(&all, origin.as_deref()))
+    }
+
+    /// Reads a BIP-329 file into a wallet's labels. A label in the file replaces the one saved for
+    /// the same thing; labels the file doesn't mention are left alone. Records for things this
+    /// wallet doesn't have are kept too (they're harmless and come back out on export), which is
+    /// what lets a file from a wallet that knows more pass through unchanged.
+    pub fn import_labels(&self, key_id: &str, text: &str) -> Result<LabelImportView> {
+        let (key_id, ..) = self.wallet_target(key_id)?;
+        if text.len() > labels::MAX_IMPORT_BYTES {
+            return Err(anyhow!("that file is too big to be a label file"));
+        }
+        let parsed = labels::parse_bip329(text);
+        if parsed.labels.is_empty() {
+            return Err(anyhow!(
+                "no labels found; a label file (BIP-329) has one JSON record per line"
+            ));
+        }
+        let mut db = self.0.db.lock().unwrap();
+        let existing = load_labels(&db, key_id)?;
+        let tx = db.transaction()?;
+        let (mut imported, mut unchanged) = (0, 0);
+        for label in &parsed.labels {
+            if existing.get(&(label.kind, label.reference.clone())) == Some(label) {
+                unchanged += 1;
+                continue;
+            }
+            save_label(&tx, key_id, label)?;
+            imported += 1;
+        }
+        tx.commit()?;
+        drop(db);
+        event!(Level::INFO, key = %key_id, imported, skipped = parsed.skipped, "imported labels");
+        self.emit(Event::WalletChanged {
+            key_id: key_id.to_string(),
+        });
+        Ok(LabelImportView {
+            imported,
+            unchanged,
+            skipped: parsed.skipped,
+        })
+    }
+
+    /// The payment history as CSV. With prices on, the front end passes the currency and the
+    /// day's price for each date it knows (`YYYY-MM-DD` -> price of one bitcoin), and a value
+    /// column is added; dates without a price are left blank.
+    pub fn history_csv(
+        &self,
+        key_id: &str,
+        currency: Option<&str>,
+        daily_prices: &HashMap<String, f64>,
+    ) -> Result<String> {
+        let view = self.wallet(key_id)?;
+        let rows: Vec<CsvRow> = view
+            .txs
+            .into_iter()
+            .map(|tx| {
+                let fiat_value = match (tx.net_value, tx.timestamp) {
+                    (Some(sats), Some(t)) => daily_prices
+                        .get(&crate::export::iso_date(t))
+                        .map(|price| sats as f64 / 100_000_000.0 * price),
+                    _ => None,
+                };
+                CsvRow {
+                    txid: tx.txid,
+                    timestamp: tx.timestamp,
+                    net_sats: tx.net_value,
+                    fee_sats: tx.fee,
+                    confirmations: tx.confirmations,
+                    label: tx.label.unwrap_or_default(),
+                    fiat_value,
+                }
+            })
+            .collect();
+        Ok(history_csv(&rows, currency))
+    }
+
+    // =====================================================================================
     // Electrum settings
     // =====================================================================================
 
@@ -2164,6 +2638,30 @@ impl Service {
     // =====================================================================================
     // Display
     // =====================================================================================
+
+    /// The user's price choices (prices are off until switched on).
+    pub fn price_settings(&self) -> PriceSettings {
+        let db = self.0.db.lock().unwrap();
+        db.query_row(
+            "SELECT value FROM icebox_settings WHERE name = 'prices'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .and_then(|json| serde_json::from_str(&json).ok())
+        .unwrap_or_default()
+    }
+
+    pub fn set_price_settings(&self, settings: PriceSettings) -> Result<PriceSettings> {
+        let settings = settings.cleaned().map_err(|e| anyhow!(e))?;
+        self.0.db.lock().unwrap().execute(
+            "INSERT INTO icebox_settings (name, value) VALUES ('prices', ?1)
+             ON CONFLICT (name) DO UPDATE SET value = excluded.value",
+            rusqlite::params![serde_json::to_string(&settings)?],
+        )?;
+        event!(Level::INFO, enabled = settings.enabled, currency = %settings.currency, "price settings changed");
+        Ok(settings)
+    }
 
     /// Whether amounts are hidden (shown as dots). Stored with the official app's own setting.
     pub fn hide_balance(&self) -> bool {
@@ -2280,6 +2778,7 @@ fn address_view(index: u32, address: &Address, used: bool) -> Result<AddressView
         address: text,
         used,
         qr_svg,
+        label: None,
     })
 }
 

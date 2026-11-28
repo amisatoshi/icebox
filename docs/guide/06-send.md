@@ -19,6 +19,11 @@ Open the wallet and click the **Send** tab (or **Wallet → Send**, **Ctrl+S** /
   underneath.
 - **Fee rate (sat/vB):** click **Suggest fee rates** for current estimates (next block, ~30 min,
   ~1 hour, ~4 hours) and pick one. Higher pays more and confirms sooner.
+- **Note (optional):** a label for this payment, e.g. "Supplier invoice 1042". It stays on this
+  computer and isn't sent with the payment. See [Labels](13-labels-coins-and-exports.md#labels).
+
+With [prices](10-settings.md#prices) switched on, the amount's value in your currency shows under
+it, and on the review screen.
 
 Click **Review payment**.
 
@@ -87,8 +92,10 @@ Any other error is shown as "Broadcast failed: …". Check your connection in
 
 ## Not yet in Icebox
 
-Speeding up a stuck payment (RBF/CPFP), choosing which coins to spend, and PSBT import/export
-are on the [roadmap](../../ROADMAP.md). For now, use the official Frostsnap app for those.
+Speeding up a stuck payment (RBF/CPFP), choosing which coins pay someone (you can already
+[combine chosen coins](13-labels-coins-and-exports.md#combine-coins)), and PSBT import/export
+aren't in Icebox yet; PSBT is on the [roadmap](../../ROADMAP.md). For now, use the official
+Frostsnap app for those.
 
 A payment that's been waiting for over two weeks is marked **may never confirm** in History: the
 network has probably dropped it, usually because its fee was too low.

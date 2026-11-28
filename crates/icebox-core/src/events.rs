@@ -144,6 +144,8 @@ pub struct AddressListItem {
     pub used: bool,
     /// Was handed out (copied, shown or checked on a device).
     pub shared: bool,
+    /// The user's note for this address, if any.
+    pub label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -267,6 +269,30 @@ pub struct TxView {
     pub fee: Option<u64>,
     pub confirmations: u32,
     pub timestamp: Option<u64>,
+    /// The user's note for this payment, if any.
+    pub label: Option<String>,
+}
+
+/// One saved label (BIP-329 record).
+#[derive(Debug, Clone, Serialize)]
+pub struct LabelView {
+    /// "tx", "addr", "output", or another BIP-329 type kept from an imported file.
+    pub kind: String,
+    pub reference: String,
+    pub label: String,
+    /// Only for "output": false when another wallet marked the coin as not to be spent.
+    pub spendable: Option<bool>,
+}
+
+/// What importing a label file did.
+#[derive(Debug, Clone, Serialize)]
+pub struct LabelImportView {
+    /// Labels added or changed.
+    pub imported: usize,
+    /// Labels that were already the same.
+    pub unchanged: usize,
+    /// Lines that weren't a label Icebox could read.
+    pub skipped: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -276,10 +302,34 @@ pub struct AddressView {
     pub used: bool,
     /// QR code of the address as an SVG data URI.
     pub qr_svg: String,
+    /// The user's note for this address, if any.
+    pub label: Option<String>,
+}
+
+/// One coin (unspent output) the wallet holds.
+#[derive(Debug, Clone, Serialize)]
+pub struct CoinView {
+    /// `txid:vout`.
+    pub outpoint: String,
+    pub value: u64,
+    /// The address it was paid to, if it's a standard one.
+    pub address: Option<String>,
+    pub confirmations: u32,
+    /// When it confirmed (or was first seen, while unconfirmed).
+    pub timestamp: Option<u64>,
+    /// The coin's own label, then the label of the payment it came in, then of its address.
+    pub label: Option<String>,
+    pub tx_label: Option<String>,
+    pub address_label: Option<String>,
+    /// False when an imported label file marked it as not to be spent (BIP-329 `spendable`).
+    pub spendable: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SendPreview {
+    /// True for a consolidation: everything goes back to this wallet as one coin, and
+    /// `recipient` is empty.
+    pub to_self: bool,
     pub recipient: String,
     pub amount: u64,
     pub fee: u64,
